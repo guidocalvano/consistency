@@ -1,6 +1,8 @@
 import tensorflow as tf
 from learning import MatrixCapsNet
 from input.SmallNorb import SmallNorb
+import config
+
 
 class MatrixCapsNetEstimator:
     def init(self):
@@ -105,7 +107,8 @@ class MatrixCapsNetEstimator:
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
                 'label_count': small_norb.label_count()
-            })
+            },
+            model_dir=config.TF_MODEL_PATH)
 
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
         eval_spec = tf.estimator.EvalSpec(input_fn=validation_fn)
