@@ -531,11 +531,15 @@ class MatrixCapsNet:
         pose_element_axis = 3
 
         # [batch, 1, parent, 1]
-        factor = tf.reciprocal(
-            tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
-        )
-        assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+        # factor = tf.reciprocal(
+        #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
+        # )
 
+        divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
+
+        # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
+
+        # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
         # [batch, child, parent, pose_element] @TODO is likely_parent_pose  broadcasted correctly
         potential_parent_pose_variance = tf.square(potential_parent_pose_vectors - likely_parent_pose)
@@ -548,8 +552,10 @@ class MatrixCapsNet:
         assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
         # [batch, child, parent, 1]
-        parent_probability_per_child = factor * tf.exp(power)
-        assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+        # parent_probability_per_child = factor * tf.exp(power)
+        # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+
+        parent_probability_per_child = tf.exp(power) / divisor
 
         # [batch, child, parent, 1]
         active_parent_probability_per_child = parent_probability_per_child * parent_activations

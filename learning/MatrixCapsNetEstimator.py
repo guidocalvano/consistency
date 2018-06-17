@@ -88,7 +88,7 @@ class MatrixCapsNetEstimator:
 
         return spread_loss
 
-    def run_default(self, small_norb, batch_size=50, epoch_count=50, max_steps=1000):
+    def run_default(self, small_norb, batch_size=50, epoch_count=50, max_steps=2500):
 
         total_example_count = small_norb.training_example_count() * epoch_count
 

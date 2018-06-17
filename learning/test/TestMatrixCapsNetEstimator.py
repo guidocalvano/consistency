@@ -58,33 +58,33 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
             self.assertFiniteAndShape(sl_output, [], "spread loss output must be finite and contain a single value after training")
 
 
-    def test_model_fn_training(self):
-
-        mcne = MatrixCapsNetEstimator()
-
-        examples = tf.constant(np.random.normal(np.zeros([1, 32, 32, 1])), tf.float32)
-        labels = tf.constant(np.ones([1]), tf.int32)
-        mode = tf.estimator.ModeKeys.TRAIN
-
-        params = {
-            'total_example_count': 1,
-            'iteration_count': 3,
-            'label_count': 5
-        }
-
-        training_specs = mcne.default_model_function(examples, labels, mode, params)
-
-        sess = tf.Session()
-        with sess.as_default():
-            sess.run(tf.global_variables_initializer())
-
-            weights = sess.run([tf.trainable_variables()])
-
-            self.assertTrue(np.isfinite(weights))
-
-            sess.run([training_specs.train_op])
-
-        pass
+    # def test_model_fn_training(self):
+    #
+    #     mcne = MatrixCapsNetEstimator()
+    #
+    #     examples = tf.constant(np.random.normal(np.zeros([1, 32, 32, 1])), tf.float32)
+    #     labels = tf.constant(np.ones([1]), tf.int32)
+    #     mode = tf.estimator.ModeKeys.TRAIN
+    #
+    #     params = {
+    #         'total_example_count': 1,
+    #         'iteration_count': 3,
+    #         'label_count': 5
+    #     }
+    #
+    #     training_specs = mcne.default_model_function(examples, labels, mode, params)
+    #
+    #     sess = tf.Session()
+    #     with sess.as_default():
+    #         sess.run(tf.global_variables_initializer())
+    #
+    #         weights = sess.run([tf.trainable_variables()])
+    #
+    #         self.assertTrue(np.isfinite(weights))
+    #
+    #         sess.run([training_specs.train_op])
+    #
+    #     pass
 
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):
         self.assertTrue(np.isfinite(tensor_array).all(), message + ": does not have finite data")
