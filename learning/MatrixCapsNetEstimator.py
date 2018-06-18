@@ -126,7 +126,7 @@ class MatrixCapsNetEstimator:
         return test_result, validation_result, training_result, test_predictions
 
     def evaluate(self, small_norb, batch_size=50):
-        total_example_count = small_norb.training_example_count() * epoch_count
+        total_example_count = small_norb.training_example_count()
 
         train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
             .shuffle(100000)\
@@ -140,7 +140,8 @@ class MatrixCapsNetEstimator:
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
                 'label_count': small_norb.label_count()
-            })
+            },
+            model_dir=config.TF_MODEL_PATH)
 
         training_result = estimator.evaluate(input_fn=train_fn)
 

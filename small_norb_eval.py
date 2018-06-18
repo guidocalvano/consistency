@@ -9,7 +9,7 @@ sn = SmallNorb.from_cache()
 
 mcne = MatrixCapsNetEstimator().init()
 
-batch_size = 500
+batch_size = 25
 
 results = mcne.evaluate(sn, batch_size)
 

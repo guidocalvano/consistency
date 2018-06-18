@@ -9,7 +9,7 @@ sn = SmallNorb.from_cache()
 
 mcne = MatrixCapsNetEstimator().init()
 
-batch_size = 50
+batch_size = 30
 epoch_count = 50
 max_steps = 1000
 
