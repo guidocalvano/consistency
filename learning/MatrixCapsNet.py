@@ -32,54 +32,56 @@ class MatrixCapsNet:
 
     def build_default_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
 
-        texture_patches_A = 32
-        capsule_count_C = 32
-        capsule_count_D = 32
-        capsule_count_E = 5
+        with tf.name_scope('default_matrix_capsule_architecture') as scope0:
 
-        batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
+            texture_patches_A = 32
+            capsule_count_C = 32
+            capsule_count_D = 32
+            capsule_count_E = 5
 
-        progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
+            batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
 
-        steepness_lambda = self.increasing_value(.01, .01, is_training)
-        spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+            progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
 
-        convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+            steepness_lambda = self.increasing_value(.01, .01, is_training)
+            spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
 
-        # number of capsules is defined by number of texture patches
-        primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
-        conv_caps_layer_C = self.build_convolutional_capsule_layer(
-            primary_capsule_layer_B,
-            3,
-            2,
-            capsule_count_C,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
-        conv_caps_layer_D = self.build_convolutional_capsule_layer(
-            conv_caps_layer_C,
-            3,
-            1,
-            capsule_count_D,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            conv_caps_layer_C = self.build_convolutional_capsule_layer(
+                primary_capsule_layer_B,
+                3,
+                2,
+                capsule_count_C,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        use_coordinate_addition = True
-        aggregating_capsule_layer = self.build_aggregating_capsule_layer(
-            conv_caps_layer_D,
-            use_coordinate_addition,
-            capsule_count_E,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            conv_caps_layer_D = self.build_convolutional_capsule_layer(
+                conv_caps_layer_C,
+                3,
+                1,
+                capsule_count_D,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        next_routing_state = tf.get_collection("next_routing_state")
+            use_coordinate_addition = True
+            aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+                conv_caps_layer_D,
+                use_coordinate_addition,
+                capsule_count_E,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            next_routing_state = tf.get_collection("next_routing_state")
 
         return aggregating_capsule_layer, spread_loss_margin, next_routing_state
 
@@ -90,39 +92,43 @@ class MatrixCapsNet:
                                         steepness_lambda,
                                         iteration_count,
                                         routing_state=None):
-        input_activations = input_layer_list[0]
-        input_poses = input_layer_list[1]
 
-        normal_layer_coordinate_addition = None
-        if use_coordinate_addition:
+        with tf.name_scope('aggregating_capsule_layer') as scope0:
 
-            [batch_size, width, height, capsule_count, parent_broadcast_dim, activation_dim] = numpy_shape_ct(input_activations)
+            input_activations = input_layer_list[0]
+            input_poses = input_layer_list[1]
 
-            width_addition = tf.constant((np.arange(width) / width).astype('float32'), shape=[1, width, 1, 1, 1, 1])
-            height_addition = tf.constant((np.arange(height) / height).astype('float32'), shape=[1, 1, height, 1, 1, 1])
+            normal_layer_coordinate_addition = None
+            if use_coordinate_addition:
+                with tf.name_scope('coordinate_addition') as scope1:
 
-            tiled_width_addition = tf.tile(width_addition, [1, 1, height, 1, 1, 1])
-            tiled_height_addition = tf.tile(height_addition, [1, width, 1, 1, 1, 1])
+                    [batch_size, width, height, capsule_count, parent_broadcast_dim, activation_dim] = numpy_shape_ct(input_activations)
 
-            element_axis = 5
-            # raise Exception("width_addition and height_addition must be repeated and tiled correctly instead of relying on broadcasting")
-            coordinate_addition = tf.concat([tiled_width_addition, tiled_height_addition], axis=element_axis)
-            coordinate_addition_per_capsule = tf.tile(coordinate_addition,[1, 1, 1, capsule_count, 1, 1])
-            normal_layer_coordinate_addition = self.build_cast_conv_to_normal_layer(coordinate_addition_per_capsule)
-            # coordinate_addition = tf.reshape(coordinate_addition, shape=[1, width * height * capsule_count, 1, 2])
+                    width_addition = tf.constant((np.arange(width) / width).astype('float32'), shape=[1, width, 1, 1, 1, 1])
+                    height_addition = tf.constant((np.arange(height) / height).astype('float32'), shape=[1, 1, height, 1, 1, 1])
 
-        normal_input_activations = self.build_cast_conv_to_normal_layer(input_activations)
-        normal_input_poses = self.build_cast_conv_to_normal_layer(input_poses)
+                    tiled_width_addition = tf.tile(width_addition, [1, 1, height, 1, 1, 1])
+                    tiled_height_addition = tf.tile(height_addition, [1, width, 1, 1, 1, 1])
 
-        aggregated_capsule_layer = self.build_matrix_caps(
-            parent_count,
-            steepness_lambda,
-            iteration_count,
-            normal_input_activations,
-            normal_input_poses,
-            routing_state,
-            normal_layer_coordinate_addition
-        )
+                    element_axis = 5
+                    # raise Exception("width_addition and height_addition must be repeated and tiled correctly instead of relying on broadcasting")
+                    coordinate_addition = tf.concat([tiled_width_addition, tiled_height_addition], axis=element_axis)
+                    coordinate_addition_per_capsule = tf.tile(coordinate_addition,[1, 1, 1, capsule_count, 1, 1])
+                    normal_layer_coordinate_addition = self.build_cast_conv_to_normal_layer(coordinate_addition_per_capsule)
+                    # coordinate_addition = tf.reshape(coordinate_addition, shape=[1, width * height * capsule_count, 1, 2])
+
+            normal_input_activations = self.build_cast_conv_to_normal_layer(input_activations)
+            normal_input_poses = self.build_cast_conv_to_normal_layer(input_poses)
+
+            aggregated_capsule_layer = self.build_matrix_caps(
+                parent_count,
+                steepness_lambda,
+                iteration_count,
+                normal_input_activations,
+                normal_input_poses,
+                routing_state,
+                normal_layer_coordinate_addition
+            )
 
         return aggregated_capsule_layer
 
@@ -134,7 +140,7 @@ class MatrixCapsNet:
 
         normal_shape = np.concatenate([[batch_size, node_count], output_dimensions])
 
-        normal_layer = tf.reshape(input_layer, shape=normal_shape)
+        normal_layer = tf.reshape(input_layer, shape=normal_shape, name='convolutional_to_normal_layer')
         return normal_layer
 
     def build_encoding_convolution(self, input_layer, kernel_size, filter_count):
@@ -143,33 +149,34 @@ class MatrixCapsNet:
             kernel_size=kernel_size,
             filters=filter_count,
             strides=[2, 2],
-            activation=tf.nn.relu  #@TODO: test leaky relu
+            activation=tf.nn.relu,  #@TODO: test leaky relu
+            name='convolutional_layer'
         )
         return output_layer
 
-    def build_decoding_convolution(self, decoded_input, encoded_output, parent_decoder, kernel_size, filter_count):
-
-        weights_shape = np.concatenate([kernel_size, [filter_count]])
-        weights = tf.Variable(tf.truncated_normal(weights_shape))
-
-        reconstruction_training_layer = tf.layers.conv2d_transpose(
-            encoded_output,
-            weights,
-            kernel_size=kernel_size,
-            filters=decoded_input.shape[3].value,
-            activation=tf.nn.relu  #@TODO: test leaky relu
-        )
-        reconstruction_loss = tf.abs(tf.stop_gradient(decoded_input) - reconstruction_training_layer)
-
-        reconstruction_prediction_layer = tf.layers.conv2d_transpose(
-            parent_decoder,
-            weights,
-            kernel_size=kernel_size,
-            filters=decoded_input.shape[3].value,
-            activation=tf.nn.relu  #@TODO test leaky relu
-        )
-
-        return reconstruction_prediction_layer, reconstruction_loss
+    # def build_decoding_convolution(self, decoded_input, encoded_output, parent_decoder, kernel_size, filter_count):
+    #
+    #     weights_shape = np.concatenate([kernel_size, [filter_count]])
+    #     weights = tf.Variable(tf.truncated_normal(weights_shape))
+    #
+    #     reconstruction_training_layer = tf.layers.conv2d_transpose(
+    #         encoded_output,
+    #         weights,
+    #         kernel_size=kernel_size,
+    #         filters=decoded_input.shape[3].value,
+    #         activation=tf.nn.relu  #@TODO: test leaky relu
+    #     )
+    #     reconstruction_loss = tf.abs(tf.stop_gradient(decoded_input) - reconstruction_training_layer)
+    #
+    #     reconstruction_prediction_layer = tf.layers.conv2d_transpose(
+    #         parent_decoder,
+    #         weights,
+    #         kernel_size=kernel_size,
+    #         filters=decoded_input.shape[3].value,
+    #         activation=tf.nn.relu  #@TODO test leaky relu
+    #     )
+    #
+    #     return reconstruction_prediction_layer, reconstruction_loss
 
     def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count):
 
@@ -177,12 +184,17 @@ class MatrixCapsNet:
             input_layer,
             kernel_size=[1, 1],
             filters=input_filter_count * 16,
-            activation=None
+            activation=None,
+            name='extract_poses'
         )
         pose_shape = pose_element_layer.get_shape()
 
         parent_broadcast_dim = 1
-        pose_layer = tf.reshape(pose_element_layer, shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, parent_broadcast_dim, 4, 4])
+        pose_layer = tf.reshape(
+            pose_element_layer,
+            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, parent_broadcast_dim, 4, 4],
+            name='reshape_poses'
+        )
 
         return pose_layer
 
@@ -192,7 +204,8 @@ class MatrixCapsNet:
             input_layer,
             kernel_size=[1, 1],
             filters=input_filter_count,
-            activation=tf.nn.sigmoid
+            activation=tf.nn.sigmoid,
+            name='extract_activations'
         )
 
         parent_broadcast_dim = tf.Dimension(1)
@@ -201,18 +214,20 @@ class MatrixCapsNet:
         for i in range(target_shape.shape[0]):
             target_shape[i] = target_shape[i] if target_shape[i].value is not None else -1
 
-        activation_layer = tf.reshape(raw_activation_layer, shape=target_shape)
+        activation_layer = tf.reshape(raw_activation_layer, shape=target_shape, name='reshape_activations')
 
         return activation_layer
 
     def build_primary_matrix_caps(self, input_layer):
 
-        filter_axis = 3
+        with tf.name_scope('primary_matrix_capsules') as scope0:
 
-        input_filter_count = input_layer.get_shape()[filter_axis]
+            filter_axis = 3
 
-        activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count)
-        pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count)
+            input_filter_count = input_layer.get_shape()[filter_axis]
+
+            activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count)
+            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count)
 
         return [activation_layer, pose_layer]
 
@@ -242,146 +257,156 @@ class MatrixCapsNet:
         )
 
     def build_convolution_of(self, input_feature_image_layer_list, kernel_size: int, stride: int, filter_layer_constructor):
-        # first collapse the nasty complicated feature dimensions into 1 dimension with reshape: [batch, width, height, feature_dimensions*]
-        # use tf.extract_image_patches to create [batch, patch_x, patch_y, kernel_width * kernel_height * collapsed_feature_dimensions]
-        # collapse batch patch_x and patch_y into one dimension batch_patches:
-        # [batch * patch_x * patch_y, kernel_width * kernel_height * collapsed_feature_dimensions]
-        # decollapse feature dimensions to [batch * patch_x * patch_y, kernel_width * kernel_height, feature_dimensions*]
-        # apply filter constructor
-        # decollapse batch_patches back into [batch, patch_x, patch_y, filter, output_dimensions]
 
-        # @TODO: fix ugly hack of getting patch_row_width, and patch_column_height from loop
-        batch_size, patch_row_width, patch_column_height = None, None, None
-        argument_list = []
+        with tf.name_scope('convolution_layer') as scope0:
 
-        for i in range(len(input_feature_image_layer_list)):
-            input_feature_image_layer = input_feature_image_layer_list[i]
+            # first collapse the nasty complicated feature dimensions into 1 dimension with reshape: [batch, width, height, feature_dimensions*]
+            # use tf.extract_image_patches to create [batch, patch_x, patch_y, kernel_width * kernel_height * collapsed_feature_dimensions]
+            # collapse batch patch_x and patch_y into one dimension batch_patches:
+            # [batch * patch_x * patch_y, kernel_width * kernel_height * collapsed_feature_dimensions]
+            # decollapse feature dimensions to [batch * patch_x * patch_y, kernel_width * kernel_height, feature_dimensions*]
+            # apply filter constructor
+            # decollapse batch_patches back into [batch, patch_x, patch_y, filter, output_dimensions]
 
-            input_feature_image_layer_shape = numpy_shape_ct(input_feature_image_layer)
+            # @TODO: fix ugly hack of getting patch_row_width, and patch_column_height from loop
+            batch_size, patch_row_width, patch_column_height = None, None, None
+            argument_list = []
 
-            batch_size = input_feature_image_layer_shape[0]
-            width = input_feature_image_layer_shape[1]
-            height = input_feature_image_layer_shape[2]
-            feature_count = input_feature_image_layer_shape[3]
-            feature_dimensions = input_feature_image_layer_shape[4:] # feature dimensions are the EXTRA structure beyond the filter dimension; i.e. 1 for activation and 4x4 for pose matrices
-            collapsed_feature_dimensions = feature_count * np.product(feature_dimensions)
+            with tf.name_scope('image_patch_construction') as scope1:
 
-            collapsed_feature_image = tf.reshape(input_feature_image_layer, shape=[batch_size, width, height, collapsed_feature_dimensions])
+                for i in range(len(input_feature_image_layer_list)):
+                    input_feature_image_layer = input_feature_image_layer_list[i]
 
-            # IMAGE PATCH EXTRACTION
-            collapsed_feature_image_patches = tf.extract_image_patches(collapsed_feature_image,
-                                                                       ksizes=[1, kernel_size, kernel_size, 1],
-                                                                       strides=[1, stride, stride, 1],
-                                                                       rates=[1, 1, 1, 1],
-                                                                       padding='VALID')
+                    input_feature_image_layer_shape = numpy_shape_ct(input_feature_image_layer)
 
-            [not_used, patch_row, patch_column, collapsed_image_patch_dimensions] = numpy_shape_ct(collapsed_feature_image_patches)
+                    batch_size = input_feature_image_layer_shape[0]
+                    width = input_feature_image_layer_shape[1]
+                    height = input_feature_image_layer_shape[2]
+                    feature_count = input_feature_image_layer_shape[3]
+                    feature_dimensions = input_feature_image_layer_shape[4:] # feature dimensions are the EXTRA structure beyond the filter dimension; i.e. 1 for activation and 4x4 for pose matrices
+                    collapsed_feature_dimensions = feature_count * np.product(feature_dimensions)
 
-            assert (numpy_shape_ct(collapsed_feature_image_patches) == np.array([batch_size,
-                                                                   (width - (kernel_size - 1)) / stride,
-                                                                   (height - (kernel_size - 1)) / stride,
-                                                                   collapsed_image_patch_dimensions])).all()
+                    collapsed_feature_image = tf.reshape(input_feature_image_layer, shape=[batch_size, width, height, collapsed_feature_dimensions])
 
-            # PREPARE IMAGE PATCH PROCESSING
+                    # IMAGE PATCH EXTRACTION
+                    collapsed_feature_image_patches = tf.extract_image_patches(collapsed_feature_image,
+                                                                               ksizes=[1, kernel_size, kernel_size, 1],
+                                                                               strides=[1, stride, stride, 1],
+                                                                               rates=[1, 1, 1, 1],
+                                                                               padding='VALID')
 
-            # Each patch must become a row, and all features must be expanded again into their appropriate dimensions.
-            # Dimensions can be seen as a tree structure; for each dimension a value selects a branch.
-            # Each level of the tree can be seen as an interface; both the tree structure before the level and after
-            # the level can be restructured by mapping to a different number of dimensions, as long as the number of
-            # elements at that specific level remains the same.
-            # The processing layer requires data in its original feature dimensions, without the structure imposed
-            # by the kernels. Restructuring the input payload into kernel_size * kernel_size * feature_count, feature_dimensions
-            # will therefore only restructure the input from a list of values into a tree structure, but the roots of
-            # that tree structure still form the same list as the original data. This is the list indexed by batch,
-            # patch_row and patch_column.
-            # This means that each root describes a single input for the processing layer. I.e. by passing -1 to reshape
-            # the dimensions batch, patch_row and patch_column collapse into a new dimension (patch_batch) corresponding
-            # to the records that must be processed.
-            # The following commented lines show this process step by step in reverse order (though this is not possible in tensor flow
-            # because batch_size is not yet known):
-            #
-            # merge all patches by converting batches and patches to patch_batches
-            # patch_batch_size = batch_size * patch_row * patch_column # WON'T WORK BECAUSE WE DON'T KNOW batch_size, but -1 can be passed to shape
-            # collapsed_feature_image_patch_batches = tf.reshape(collapsed_feature_image_patches, shape=[-1, collapsed_image_patch_dimensions])
-            # feature_image_patch_batches = tf.reshape(collapsed_feature_image_patch_batches,
-            #     np.concatenate([[patch_batch_size, kernel_size * kernel_size * feature_count], feature_dimensions])
-            # )
-            # this line does the above all in one go, as -1 makes reshape compute batch_size * patch_row * patch_column
-            # implicitly.
-            feature_image_patch_batches = tf.reshape(collapsed_feature_image_patches,
-                np.concatenate([[-1, kernel_size * kernel_size * feature_count], feature_dimensions])
-            )
+                    [not_used, patch_row, patch_column, collapsed_image_patch_dimensions] = numpy_shape_ct(collapsed_feature_image_patches)
 
-            argument_list.append(feature_image_patch_batches)
+                    assert (numpy_shape_ct(collapsed_feature_image_patches) == np.array([batch_size,
+                                                                           (width - (kernel_size - 1)) / stride,
+                                                                           (height - (kernel_size - 1)) / stride,
+                                                                           collapsed_image_patch_dimensions])).all()
 
-        # PROCESS IMAGE PATCHES
-        patch_batch_results = filter_layer_constructor(*argument_list)
-        results = []
+                    # PREPARE IMAGE PATCH PROCESSING
 
-        for filtered_image_patch_batches in patch_batch_results:
-            # RESHAPE TO PATCH X AND PATCH Y
+                    # Each patch must become a row, and all features must be expanded again into their appropriate dimensions.
+                    # Dimensions can be seen as a tree structure; for each dimension a value selects a branch.
+                    # Each level of the tree can be seen as an interface; both the tree structure before the level and after
+                    # the level can be restructured by mapping to a different number of dimensions, as long as the number of
+                    # elements at that specific level remains the same.
+                    # The processing layer requires data in its original feature dimensions, without the structure imposed
+                    # by the kernels. Restructuring the input payload into kernel_size * kernel_size * feature_count, feature_dimensions
+                    # will therefore only restructure the input from a list of values into a tree structure, but the roots of
+                    # that tree structure still form the same list as the original data. This is the list indexed by batch,
+                    # patch_row and patch_column.
+                    # This means that each root describes a single input for the processing layer. I.e. by passing -1 to reshape
+                    # the dimensions batch, patch_row and patch_column collapse into a new dimension (patch_batch) corresponding
+                    # to the records that must be processed.
+                    # The following commented lines show this process step by step in reverse order (though this is not possible in tensor flow
+                    # because batch_size is not yet known):
+                    #
+                    # merge all patches by converting batches and patches to patch_batches
+                    # patch_batch_size = batch_size * patch_row * patch_column # WON'T WORK BECAUSE WE DON'T KNOW batch_size, but -1 can be passed to shape
+                    # collapsed_feature_image_patch_batches = tf.reshape(collapsed_feature_image_patches, shape=[-1, collapsed_image_patch_dimensions])
+                    # feature_image_patch_batches = tf.reshape(collapsed_feature_image_patch_batches,
+                    #     np.concatenate([[patch_batch_size, kernel_size * kernel_size * feature_count], feature_dimensions])
+                    # )
+                    # this line does the above all in one go, as -1 makes reshape compute batch_size * patch_row * patch_column
+                    # implicitly.
+                    feature_image_patch_batches = tf.reshape(collapsed_feature_image_patches,
+                        np.concatenate([[-1, kernel_size * kernel_size * feature_count], feature_dimensions])
+                    )
 
-            filtered_output_shape = numpy_shape_ct(filtered_image_patch_batches)[1:]
+                    argument_list.append(feature_image_patch_batches)
 
-            filtered_batch_x_y_shape = [batch_size, patch_row, patch_column]
+            # PROCESS IMAGE PATCHES
 
-            filtered_image_batch_shape = np.concatenate([filtered_batch_x_y_shape, filtered_output_shape])
+            with tf.name_scope('image_patch_to_feature') as scope3:
 
-            filtered_image_batch = tf.reshape(filtered_image_patch_batches, shape=filtered_image_batch_shape)
-            results.append(filtered_image_batch)
+                patch_batch_results = filter_layer_constructor(*argument_list)
+                results = []
+
+            with tf.name_scope('feature_image_construction') as scope3:
+
+                for filtered_image_patch_batches in patch_batch_results:
+                    # RESHAPE TO PATCH X AND PATCH Y
+
+                    filtered_output_shape = numpy_shape_ct(filtered_image_patch_batches)[1:]
+
+                    filtered_batch_x_y_shape = [batch_size, patch_row, patch_column]
+
+                    filtered_image_batch_shape = np.concatenate([filtered_batch_x_y_shape, filtered_output_shape])
+
+                    filtered_image_batch = tf.reshape(filtered_image_patch_batches, shape=filtered_image_batch_shape)
+                    results.append(filtered_image_batch)
 
         return results
 
-
     def build_potential_parent_pose_layer(self, child_poses, parent_capsule_count):
-        # retrieve relevant dimensions
-        child_poses_shape = numpy_shape_ct(child_poses)
-        batch_size = tf.shape(child_poses)[0]
-        child_capsule_count = child_poses_shape[1]
+        with tf.name_scope('potential_parent_pose_layer') as scope:
+            # retrieve relevant dimensions
+            child_poses_shape = numpy_shape_ct(child_poses)
+            batch_size = tf.shape(child_poses)[0]
+            child_capsule_count = child_poses_shape[1]
 
-        # UNFORTUNATELY tf.matmul DOES NOT IMPLEMENT BROADCASTING, SO THE CODE BELOW DOES SO MANUALLY
+            # UNFORTUNATELY tf.matmul DOES NOT IMPLEMENT BROADCASTING, SO THE CODE BELOW DOES SO MANUALLY
 
-        # A pose transform matrix exists from each child to each parent.
-        # Weights with bigger stddev improve numerical stability
-        pose_transform_weights = tf.Variable(
-            tf.truncated_normal([1, child_capsule_count, parent_capsule_count, 4, 4], mean=0.0, stddev=1.0),
-            dtype=tf.float32)
+            # A pose transform matrix exists from each child to each parent.
+            # Weights with bigger stddev improve numerical stability
+            pose_transform_weights = tf.Variable(
+                tf.truncated_normal([1, child_capsule_count, parent_capsule_count, 4, 4], mean=0.0, stddev=1.0),
+                dtype=tf.float32, name='pose_transform_weights')
 
-        # Potential parent poses must be predicted for each batch row. So weights must be copied for each batch row.
-        pose_transform_weights_copied_for_batch = tf.tile(pose_transform_weights, [batch_size, 1, 1, 1, 1])
+            # Potential parent poses must be predicted for each batch row. So weights must be copied for each batch row.
+            pose_transform_weights_copied_for_batch = tf.tile(pose_transform_weights, [batch_size, 1, 1, 1, 1], name='pose_transform_tiled')
 
-        ## Because the child poses are used to produce the pose of every potential parent, a copy is necessary for
-        ## predicting the potential parent poses
-        ## A column after the child capsule column is added,
-        # child_poses_with_copy_column = tf.reshape(child_poses, shape=[batch_size, child_capsule_count, 1, 4, 4])
+            ## Because the child poses are used to produce the pose of every potential parent, a copy is necessary for
+            ## predicting the potential parent poses
+            ## A column after the child capsule column is added,
+            # child_poses_with_copy_column = tf.reshape(child_poses, shape=[batch_size, child_capsule_count, 1, 4, 4])
 
-        # above code redundant now that broadcasting dims are part of specs
+            # above code redundant now that broadcasting dims are part of specs
 
-        # so output can be copied for each parent
-        child_poses_copied_for_parents = tf.tile(child_poses, [1, 1, parent_capsule_count, 1, 1])
+            # so output can be copied for each parent
+            child_poses_copied_for_parents = tf.tile(child_poses, [1, 1, parent_capsule_count, 1, 1], name='child_pose_tiled')
 
-        # child poses are now copied for each potential parent, and child to parent tranforms are copied for each batch
-        # row, resulting in two tensors; a tensor containing pose matrices in its last two indices, and one
-        # containing pose transformations from each child to each potential parent pose
-        #
-        # matmul will now iterate over batch, child capsule, and parent capsule in both tensors and multiply the child
-        # pose with the pose transform to output the pose of a potential parent
-        potential_parent_poses = tf.matmul(child_poses_copied_for_parents, pose_transform_weights_copied_for_batch)
+            # child poses are now copied for each potential parent, and child to parent tranforms are copied for each batch
+            # row, resulting in two tensors; a tensor containing pose matrices in its last two indices, and one
+            # containing pose transformations from each child to each potential parent pose
+            #
+            # matmul will now iterate over batch, child capsule, and parent capsule in both tensors and multiply the child
+            # pose with the pose transform to output the pose of a potential parent
+            potential_parent_poses = tf.matmul(child_poses_copied_for_parents, pose_transform_weights_copied_for_batch, name='child_transformation')
 
         return potential_parent_poses
 
-    def cast_pose_matrices_to_vectors(self, pose_matrices):  # takes the last two matrix indices and reshapes into vector indices
-        current_shape = pose_matrices.get_shape()
-        new_shape = current_shape[:-1]
-        new_shape[-1] = current_shape[-1] * current_shape[-2]
-
-        return tf.reshape(pose_matrices, shape=new_shape)
-
-    def cast_pose_vectors_to_matrices(self, pose_vectors):
-        current_shape = pose_vectors.get_shape()
-        matrix_diagonal_length = math.sqrt(current_shape[-1])
-        new_shape = np.concatenate([current_shape[:-1], [matrix_diagonal_length], [matrix_diagonal_length]])
-        new_shape[-1] = current_shape[-1] * current_shape[-2]
+    # def cast_pose_matrices_to_vectors(self, pose_matrices):  # takes the last two matrix indices and reshapes into vector indices
+    #     current_shape = pose_matrices.get_shape()
+    #     new_shape = current_shape[:-1]
+    #     new_shape[-1] = current_shape[-1] * current_shape[-2]
+    #
+    #     return tf.reshape(pose_matrices, shape=new_shape)
+    #
+    # def cast_pose_vectors_to_matrices(self, pose_vectors):
+    #     current_shape = pose_vectors.get_shape()
+    #     matrix_diagonal_length = math.sqrt(current_shape[-1])
+    #     new_shape = np.concatenate([current_shape[:-1], [matrix_diagonal_length], [matrix_diagonal_length]])
+    #     new_shape[-1] = current_shape[-1] * current_shape[-2]
 
     def build_parent_assembly_layer(self,
                                     child_activations,
@@ -389,45 +414,49 @@ class MatrixCapsNet:
                                     steepness_lambda,
                                     iteration_count, # em routing
                                     routing_state):
-        parent_axis = 2
-        [_, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
-        batch_size = tf.shape(potential_parent_pose_vectors)[0]
 
-        beta_u = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]))
-        beta_a = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]))
+        with tf.name_scope('parent_assembly_layer') as scope0:
 
-        initial_child_parent_assignment_weights = tf.ones([batch_size, child_count, parent_count, 1], tf.float32) / float(parent_count)
+            parent_axis = 2
+            [_, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
+            batch_size = tf.shape(potential_parent_pose_vectors)[0]
 
-        if routing_state is not None:
-            initial_child_parent_assignment_weights = tf.constant(next(routing_state))
+            beta_u = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]), name='beta_u')
+            beta_a = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]), name='beta_a')
 
-        child_parent_assignment_weights = initial_child_parent_assignment_weights
+            initial_child_parent_assignment_weights = tf.ones([batch_size, child_count, parent_count, 1], tf.float32) / float(parent_count)
 
-        for i in range(iteration_count + 1):
-            parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance =\
-                self.estimate_parents_layer(
-                    child_parent_assignment_weights,
-                    child_activations,
-                    potential_parent_pose_vectors,
-                    beta_u,
-                    beta_a,
-                    steepness_lambda
-                )
+            if routing_state is not None:
+                initial_child_parent_assignment_weights = tf.constant(next(routing_state), name='initial_routing_state')
 
-            # the final iteration of this loop will needlessly produce an extra set of nodes using below code,
-            # BUT, this doesn't matter because what is actually computed is determined by dependency analysis of the
-            # graph and the nodes produced below in the final loop are not required for anything and thus ignored
-            child_parent_assignment_weights = self.estimate_children_layer(
-                parent_activations,
-                likely_parent_pose,
-                likely_parent_pose_variance,
-                potential_parent_pose_vectors
-            )
+            child_parent_assignment_weights = initial_child_parent_assignment_weights
 
-        tf.add_to_collection('next_routing_state', child_parent_assignment_weights)
+            with tf.name_scope('expectation_maximization') as scope1:
+                for i in range(iteration_count + 1):
+                    parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance =\
+                        self.estimate_parents_layer(
+                            child_parent_assignment_weights,
+                            child_activations,
+                            potential_parent_pose_vectors,
+                            beta_u,
+                            beta_a,
+                            steepness_lambda
+                        )
 
-        output_parent_activations = parent_activations
-        output_parent_poses = likely_parent_pose
+                    # the final iteration of this loop will needlessly produce an extra set of nodes using below code,
+                    # BUT, this doesn't matter because what is actually computed is determined by dependency analysis of the
+                    # graph and the nodes produced below in the final loop are not required for anything and thus ignored
+                    child_parent_assignment_weights = self.estimate_children_layer(
+                        parent_activations,
+                        likely_parent_pose,
+                        likely_parent_pose_variance,
+                        potential_parent_pose_vectors
+                    )
+
+            tf.add_to_collection('next_routing_state', child_parent_assignment_weights)
+
+            output_parent_activations = parent_activations
+            output_parent_poses = likely_parent_pose
 
         return output_parent_activations, output_parent_poses
 
@@ -441,75 +470,81 @@ class MatrixCapsNet:
                                steepness_lambda  # scalar
                                ):
 
-        [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
+        with tf.name_scope('estimate_parents_layer') as scope:
+            [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
 
-        assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
-        assert (numpy_shape_ct(child_activations) == np.array([batch_count, child_count, 1, 1])).all()
-        assert (numpy_shape_ct(beta_u) == np.array([1, 1, parent_count, 1])).all()
-        assert (numpy_shape_ct(beta_a) == np.array([1, 1, parent_count, 1])).all()
+            assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(child_activations) == np.array([batch_count, child_count, 1, 1])).all()
+            assert (numpy_shape_ct(beta_u) == np.array([1, 1, parent_count, 1])).all()
+            assert (numpy_shape_ct(beta_a) == np.array([1, 1, parent_count, 1])).all()
 
-        batch_axis = 0
-        child_axis = 1
-        parent_axis = 2
-        pose_element_axis = 3  # @TODO: double check if this is the correct axis
-        # select child parent assignments based on child activity
-        # [batch, child, parent, 1]
-        #@TODO: check if broadcasting works correctly
-        active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
-        assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            batch_axis = 0
+            child_axis = 1
+            parent_axis = 2
+            pose_element_axis = 3  # @TODO: double check if this is the correct axis
+            # select child parent assignments based on child activity
+            # [batch, child, parent, 1]
+            #@TODO: check if broadcasting works correctly
+            active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
+            active_child_parent_assignment_weights = tf.identity(active_child_parent_assignment_weights, name='active_child_parent_assignment_weights')
 
-        # [batch, 1, parent, 1]
-        total_active_child_parent_assignment_per_parent = tf.reduce_sum(active_child_parent_assignment_weights,
-                                                                 axis=child_axis,
-                                                                 keepdims=True)
-        assert (numpy_shape_ct(total_active_child_parent_assignment_per_parent)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-        # scale down child parent assignment weights to proportions
-        # [batch, child, parent, 1]
-        child_proportion_of_parent = active_child_parent_assignment_weights \
-                                     / (total_active_child_parent_assignment_per_parent + sys.float_info.epsilon)
-        assert (numpy_shape_ct(child_proportion_of_parent)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            # [batch, 1, parent, 1]
+            total_active_child_parent_assignment_per_parent = tf.reduce_sum(active_child_parent_assignment_weights,
+                                                                     axis=child_axis,
+                                                                     keepdims=True,
+                                                                     name='total_active_child_parent_assignment_per_parent')
+            assert (numpy_shape_ct(total_active_child_parent_assignment_per_parent)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
-        # Assemble the most probable parent pose
-        # by summing the potential_parent_pose_vectors weighted by proportional contributions of the children;
-        # This is the mu of the parent in the paper
-        # [batch, 1, parent, likely_pose_element]
-        likely_parent_pose = tf.reduce_sum(
-            potential_parent_pose_vectors * child_proportion_of_parent,
-            axis=child_axis, keepdims=True
-        )
-        assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            # scale down child parent assignment weights to proportions
+            # [batch, child, parent, 1]
+            child_proportion_of_parent = active_child_parent_assignment_weights \
+                                         / (total_active_child_parent_assignment_per_parent + sys.float_info.epsilon)
+            assert (numpy_shape_ct(child_proportion_of_parent)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-        # @TODO DOUBLE CHECK IF tf.square DOES WHAT THE MATRIX CAPS PAPER DEMANDS!!!
-        # this is the sigma of the parent in the paper
-        # [batch, 1, parent, likely_pose_element_variance]
-        likely_parent_pose_variance = tf.reduce_sum(
-            tf.square(potential_parent_pose_vectors - likely_parent_pose) * child_proportion_of_parent,
-            axis=child_axis, keepdims=True
-        )  + sys.float_info.epsilon
-        assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            # Assemble the most probable parent pose
+            # by summing the potential_parent_pose_vectors weighted by proportional contributions of the children;
+            # This is the mu of the parent in the paper
+            # [batch, 1, parent, likely_pose_element]
+            likely_parent_pose = tf.reduce_sum(
+                potential_parent_pose_vectors * child_proportion_of_parent,
+                axis=child_axis, keepdims=True, name='likely_parent_pose'
+            )
+            assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
-        # [batch, 1, parent, likely_pose_element_standard_deviation]
-        likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance) + sys.float_info.epsilon
-        assert (numpy_shape_ct(likely_parent_pose_deviation)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            # @TODO DOUBLE CHECK IF tf.square DOES WHAT THE MATRIX CAPS PAPER DEMANDS!!!
+            # this is the sigma of the parent in the paper
+            # [batch, 1, parent, likely_pose_element_variance]
+            likely_parent_pose_variance = tf.reduce_sum(
+                tf.square(potential_parent_pose_vectors - likely_parent_pose) * child_proportion_of_parent,
+                axis=child_axis, keepdims=True, name='likely_parent_pose_variance'
+            )  + sys.float_info.epsilon
+            assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
-        # inactivity parent per for child capsules
-        # [batch, 1, parent, 1]
-        sum_cost_h = tf.reduce_sum(
-            (beta_u + tf.log(likely_parent_pose_deviation + sys.float_info.epsilon)) * total_active_child_parent_assignment_per_parent,
-            axis=pose_element_axis,
-            keepdims=True
-        )
-        assert (numpy_shape_ct(sum_cost_h)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            # [batch, 1, parent, likely_pose_element_standard_deviation]
+            likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance) + sys.float_info.epsilon
+            assert (numpy_shape_ct(likely_parent_pose_deviation)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
-        cost_a = beta_a
-        # [batch, 1, parent, 1]
-        cost_balance_activity = cost_a - sum_cost_h
-        assert (numpy_shape_ct(cost_balance_activity)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            # inactivity parent per for child capsules
+            # [batch, 1, parent, 1]
+            sum_cost_h = tf.reduce_sum(
+                (beta_u + tf.log(likely_parent_pose_deviation + sys.float_info.epsilon)) * total_active_child_parent_assignment_per_parent,
+                axis=pose_element_axis,
+                keepdims=True,
+                name='inactive_cost'
+            )
+            assert (numpy_shape_ct(sum_cost_h)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
-        # [batch, 1, parent, 1]
-        parent_activations = tf.nn.sigmoid(steepness_lambda * cost_balance_activity)
-        assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            cost_a = beta_a
+            # [batch, 1, parent, 1]
+            cost_balance_activity = cost_a - sum_cost_h
+            cost_balance_activity = tf.identity(cost_balance_activity, name='cost_balance_activity')
+            assert (numpy_shape_ct(cost_balance_activity)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+
+            # [batch, 1, parent, 1]
+            parent_activations = tf.nn.sigmoid(steepness_lambda * cost_balance_activity)
+            assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
         return parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance
 
@@ -519,52 +554,65 @@ class MatrixCapsNet:
                                 likely_parent_pose_variance,  # [batch, 1, parent, likely_pose_element_variance]
                                 potential_parent_pose_vectors):  # [batch, child, parent, pose_element]
 
-        [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
+        with tf.name_scope('estimate_children_layer') as scope:
 
-        assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
-        assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
-        assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
 
-        batch_axis = 0
-        child_axis = 1
-        parent_axis = 2
-        pose_element_axis = 3
+            assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
-        # [batch, 1, parent, 1]
-        # factor = tf.reciprocal(
-        #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
-        # )
+            batch_axis = 0
+            child_axis = 1
+            parent_axis = 2
+            pose_element_axis = 3
 
-        divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
+            # [batch, 1, parent, 1]
+            # factor = tf.reciprocal(
+            #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
+            # )
 
-        # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
+            divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
+            divisor = tf.identity(divisor, name='divisor')
+            # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
 
-        # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
-        # [batch, child, parent, pose_element] @TODO is likely_parent_pose  broadcasted correctly
-        potential_parent_pose_variance = tf.square(potential_parent_pose_vectors - likely_parent_pose)
-        assert (numpy_shape_ct(potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, parent_count, pose_element_count])[1:]).all()
+            # [batch, child, parent, pose_element] @TODO is likely_parent_pose  broadcasted correctly
+            potential_parent_pose_variance = tf.square(potential_parent_pose_vectors - likely_parent_pose)
+            potential_parent_pose_variance = tf.identity(potential_parent_pose_variance, name='potential_parent_pose_variance')
 
-        # [batch, child, parent, 1]
-        power = -tf.reduce_sum(
-            potential_parent_pose_variance /
-            (likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
-        assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, parent_count, pose_element_count])[1:]).all()
 
-        # [batch, child, parent, 1]
-        # parent_probability_per_child = factor * tf.exp(power)
-        # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            # [batch, child, parent, 1]
+            power = -tf.reduce_sum(
+                potential_parent_pose_variance /
+                (likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
 
-        parent_probability_per_child = tf.exp(power) / divisor
+            power = tf.identity(power, name='power')
 
-        # [batch, child, parent, 1]
-        active_parent_probability_per_child = parent_probability_per_child * parent_activations
-        assert (numpy_shape_ct(active_parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-        # [batch, child, parent, 1]
-        child_parent_assignment_weights = active_parent_probability_per_child \
-            / (tf.reduce_sum(active_parent_probability_per_child, axis=parent_axis, keepdims=True) + sys.float_info.epsilon)
-        assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            # [batch, child, parent, 1]
+            # parent_probability_per_child = factor * tf.exp(power)
+            # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+
+            parent_probability_per_child = tf.exp(power) / divisor
+            parent_probability_per_child = tf.identity(parent_probability_per_child, name='parent_probability_per_child')
+
+            # [batch, child, parent, 1]
+            active_parent_probability_per_child = parent_probability_per_child * parent_activations
+            active_parent_probability_per_child = tf.identity(active_parent_probability_per_child, name='active_parent_probability_per_child')
+
+            assert (numpy_shape_ct(active_parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+
+            # [batch, child, parent, 1]
+            child_parent_assignment_weights = active_parent_probability_per_child \
+                / (tf.reduce_sum(active_parent_probability_per_child, axis=parent_axis, keepdims=True) + sys.float_info.epsilon)
+
+            child_parent_assignment_weights = tf.identity(child_parent_assignment_weights, name='child_parent_assignment_weights')
+
+            assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
         return child_parent_assignment_weights
 
@@ -578,37 +626,39 @@ class MatrixCapsNet:
             routing_state,
             convolution_coordinates=None):
 
-        potential_parent_poses = self.build_potential_parent_pose_layer(child_pose_layer, parent_count)
+        with tf.name_scope('matrix_capsule_layer') as scope:
 
-        [batch_size, child_count, _, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
+            potential_parent_poses = self.build_potential_parent_pose_layer(child_pose_layer, parent_count)
 
-        pose_element_count = pose_matrix_width * pose_matrix_height
-        potential_parent_pose_vectors = tf.reshape(potential_parent_poses,
-            [batch_size, child_count, parent_count, pose_element_count]
-        )
-        pose_element_axis = 3
-        if convolution_coordinates is not None:
-            dynamic_batch_size = tf.shape(potential_parent_poses)[0]
-            convolution_coordinates_tiled_for_parents = tf.tile(convolution_coordinates, [dynamic_batch_size, 1, parent_count, 1])
+            [batch_size, child_count, _, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
 
-            potential_parent_pose_vectors = tf.concat(
-                [potential_parent_pose_vectors, convolution_coordinates_tiled_for_parents],
-                axis=pose_element_axis)
+            pose_element_count = pose_matrix_width * pose_matrix_height
+            potential_parent_pose_vectors = tf.reshape(potential_parent_poses,
+                [batch_size, child_count, parent_count, pose_element_count]
+            )
+            pose_element_axis = 3
+            if convolution_coordinates is not None:
+                dynamic_batch_size = tf.shape(potential_parent_poses)[0]
+                convolution_coordinates_tiled_for_parents = tf.tile(convolution_coordinates, [dynamic_batch_size, 1, parent_count, 1])
 
-        parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
-            child_activation_vector,
-            potential_parent_pose_vectors,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+                potential_parent_pose_vectors = tf.concat(
+                    [potential_parent_pose_vectors, convolution_coordinates_tiled_for_parents],
+                    axis=pose_element_axis)
 
-        new_child_count = parent_count
-        new_parent_broadcast_dim = 1
+            parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
+                child_activation_vector,
+                potential_parent_pose_vectors,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, new_child_count, new_parent_broadcast_dim, 1])
-        parent_pose_vectors_without_coordinate_addition = parent_pose_vectors[:, :, :, :16]
-        parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors_without_coordinate_addition, shape=[batch_size, new_child_count, new_parent_broadcast_dim, pose_matrix_width, pose_matrix_height])
+            new_child_count = parent_count
+            new_parent_broadcast_dim = 1
+
+            parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, new_child_count, new_parent_broadcast_dim, 1])
+            parent_pose_vectors_without_coordinate_addition = parent_pose_vectors[:, :, :, :16]
+            parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors_without_coordinate_addition, shape=[batch_size, new_child_count, new_parent_broadcast_dim, pose_matrix_width, pose_matrix_height])
 
         return parent_as_child_activations, parent_as_child_pose_matrices
 
@@ -621,6 +671,8 @@ class MatrixCapsNet:
 
         progress_percentage = example_counter / tf.cast(full_example_count, tf.float32)
         progress_percentage = tf.cond(tf.logical_and(is_training, progress_percentage <= 1), lambda: progress_percentage, lambda: tf.constant(1.0))
+
+        progress_percentage = tf.identity(progress_percentage, name='progress_percentage')
 
         return progress_percentage, example_counter
 
