@@ -27,5 +27,6 @@ SOME_PROP = 'override value with this'
 
 # Test
 
-Unit tests are located in test directories throughout the project. The standard is to keep the test near the 
-tested component, to make it easy to find the test when adapting the component.
+Standard python unit tests are located in test directories throughout the project. 
+For a file config.PROJECT_ROOT/some_path/some_file.py its test can be found at
+config.PROJECT_ROOT/some_path/test/test_some_file.py
