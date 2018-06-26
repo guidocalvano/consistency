@@ -4,10 +4,14 @@ import dill as pickle
 import config
 import numpy as np
 import tensorflow as tf
+import os
+import shutil
 
 
 def mini_profile():
-    shutil.rmtree(config.TF_TRASH_PATH)
+    if os.path.isdir(config.TF_TRASH_PATH)
+        shutil.rmtree(config.TF_TRASH_PATH)
+
     os.makedirs(config.TF_TRASH_PATH)
 
     sn = SmallNorb.from_cache()
