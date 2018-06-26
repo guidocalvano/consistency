@@ -4,9 +4,11 @@ import dill as pickle
 import config
 import numpy as np
 import tensorflow as tf
+import os
+import shutil
 
 
-def mini_profile():
+def profile():
     shutil.rmtree(config.TF_TRASH_PATH)
     os.makedirs(config.TF_TRASH_PATH)
 
@@ -16,9 +18,9 @@ def mini_profile():
 
     mcne = MatrixCapsNetEstimator().init()
 
-    batch_size = 1
-    epoch_count = 1
-    max_steps = 1
+    batch_size = 30
+    epoch_count = 2
+    max_steps = None
 
     def create_small_input_fn(fn):
         def input_fn():
@@ -65,4 +67,4 @@ def mini_profile():
 
 
 if __name__ == "__main__":
-    mini_profile()
+    profile()
