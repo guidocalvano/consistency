@@ -11,8 +11,8 @@ SMALL_NORB_CACHE = os.path.join(CACHE_ROOT, 'small_norb_cache.dill')
 TF_MODEL_PATH = os.path.join(PROJECT_ROOT, 'tf_models')
 TF_TRASH_PATH = os.path(PROJECT_ROOT, 'trash')
 TF_DEBUG_MODEL_PATH = os.path.join(TF_TRASH_PATH, 'model_dir')
-TF_DEBUG_TRAINING_TIMELINE_FILE_PATH = os.path.join(PROJECT_ROOT, 'trash', 'train_timeline.json')
-TF_DEBUG_EVAL_TIMELINE_FILE_PATH = os.path.join(PROJECT_ROOT, 'trash', 'eval_timeline.json')
+TF_DEBUG_TRAINING_TIMELINE_FILE_PATH = os.path.join(TF_TRASH_PATH, 'train_timeline.json')
+TF_DEBUG_EVAL_TIMELINE_FILE_PATH = os.path.join(TF_TRASH_PATH, 'eval_timeline.json')
 
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, 'output')
 
