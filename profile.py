@@ -21,13 +21,13 @@ def profile():
     mcne = MatrixCapsNetEstimator().init()
 
     batch_size = 30
-    epoch_count = 2
-    max_steps = None
+    epoch_count = 1
+    max_steps = 10
 
     def create_small_input_fn(fn):
         def input_fn():
             set = fn()
-            return tf.data.Dataset.from_tensor_slices((tf.gather(set[0], [0]), tf.gather(set[1], [0]))).batch(batch_size)
+            return tf.data.Dataset.from_tensor_slices((tf.gather(set[0], list(range(batch_size))), tf.gather(set[1], list(range(batch_size))))).batch(batch_size)
         return input_fn
 
     estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, epoch_count)
