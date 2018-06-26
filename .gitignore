@@ -1,1 +1,7 @@
 config.py
+cache
+data
+env
+trash
+Library
+**/__pycache__
