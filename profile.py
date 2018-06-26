@@ -9,7 +9,7 @@ import shutil
 
 
 def profile():
-    if os.path.isdir(config.TF_TRASH_PATH)
+    if os.path.isdir(config.TF_TRASH_PATH):
         shutil.rmtree(config.TF_TRASH_PATH)
 
     os.makedirs(config.TF_TRASH_PATH)
