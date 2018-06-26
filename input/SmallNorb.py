@@ -405,5 +405,20 @@ class SmallNorb:
     def training_example_count(self):
         return self.training["examples"].shape[0]
 
+    def validation_example_count(self):
+        return self.validation["examples"].shape[0]
+
+    def test_example_count(self):
+        return self.validation["examples"].shape[0]
+
     def label_count(self):
         return np.unique(self.test["labels"]).shape[0]
+
+    def limit_by_split(self, max_element_count):
+        training_ids = np.random.choice(self.training_example_count(), [max_element_count], False)
+        validation_ids = np.random.choice(self.validation_example_count(), [max_element_count], False)
+        test_ids = np.random.choice(self.test_example_count(), [max_element_count], False)
+
+        self.training = self.filter_data_on_row_ids(self.training, training_ids)
+        self.validation = self.filter_data_on_row_ids(self.validation, validation_ids)
+        self.test = self.filter_data_on_row_ids(self.test, test_ids)

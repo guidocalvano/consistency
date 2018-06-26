@@ -8,7 +8,7 @@ class MatrixCapsNetEstimator:
     def init(self):
         return self
 
-    def default_model_function(self, examples, labels, mode, params):
+    def model_function(self, examples, labels, mode, params):
 
         total_example_count = params["total_example_count"]
         iteration_count = params["iteration_count"]
@@ -90,9 +90,13 @@ class MatrixCapsNetEstimator:
 
         return spread_loss
 
-    def run_default(self, small_norb, batch_size=50, epoch_count=50, max_steps=2500):
+    def train_and_test(self, small_norb, batch_size=30, epoch_count=10, max_steps=None, model_path=config.TF_MODEL_PATH):
 
-        total_example_count = small_norb.training_example_count() * epoch_count
+        if max_steps is None:
+            batch_count_per_epoch = small_norb.training_example_count() / batch_size
+            max_steps = batch_count_per_epoch * epoch_count
+
+        estimator = self.create_estimator(small_norb, model_path, epoch_count)
 
         train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
             .shuffle(100000)\
@@ -101,54 +105,76 @@ class MatrixCapsNetEstimator:
         validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
         test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
 
-        estimator = tf.estimator.Estimator(
-            lambda features, labels, mode, params: self.default_model_function(features, labels, mode, params),
-            params={
-                'total_example_count': total_example_count,
-                'iteration_count': 3,
-                'label_count': small_norb.label_count()
-            },
-            model_dir=config.TF_MODEL_PATH)
-
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
         eval_spec = tf.estimator.EvalSpec(input_fn=validation_fn)
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
-
-        training_result = estimator.evaluate(input_fn=train_fn)
-
+        print("training complete")
         validation_result = estimator.evaluate(input_fn=validation_fn)
+        print("validation results computed")
 
         test_result = estimator.evaluate(input_fn=test_fn)
+        print("test results computed")
 
         test_predictions = estimator.predict(input_fn=test_fn)
+        print("test predictions computed")
 
-        return test_result, validation_result, training_result, test_predictions
+        return test_result, validation_result, test_predictions
 
-    def evaluate(self, small_norb, batch_size=50):
-        total_example_count = small_norb.training_example_count()
-
-        train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
-            .shuffle(100000)\
-            .batch(batch_size)
-        validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
-        test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
+    def create_estimator(self, small_norb, model_path, epoch_count=1):
+        total_example_count = small_norb.training_example_count() * epoch_count
 
         estimator = tf.estimator.Estimator(
-            lambda features, labels, mode, params: self.default_model_function(features, labels, mode, params),
+            lambda features, labels, mode, params: self.model_function(features, labels, mode, params),
             params={
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
                 'label_count': small_norb.label_count()
             },
-            model_dir=config.TF_MODEL_PATH)
+            model_dir=model_path)
 
-        training_result = estimator.evaluate(input_fn=train_fn)
+        return estimator
+
+    def train(self, small_norb, model_path, batch_size, epoch_count, max_steps):
+        if max_steps is None:
+            batch_count_per_epoch = small_norb.training_example_count() / batch_size
+            max_steps = batch_count_per_epoch * epoch_count
+
+        estimator = self.create_estimator(small_norb, model_path, epoch_count)
+
+        train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
+            .shuffle(100000)\
+            .repeat(epoch_count)\
+            .batch(batch_size)
+
+        tf.estimator.train(estimator, input_fn=train_fn)
+        print("training complete")
+
+
+    def validate(self, small_norb, model_path, batch_size=30):
+
+        validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
+
+        estimator = self.create_estimator(small_norb, model_path)
 
         validation_result = estimator.evaluate(input_fn=validation_fn)
+        print("validation results computed")
+
+        validation_predictions = estimator.predict(input_fn=validation_fn)
+        print("validation predictions computed")
+
+        return validation_result, validation_predictions
+
+    def test(self, small_norb, model_path, batch_size=30):
+
+        test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
+
+        estimator = self.create_estimator(small_norb, model_path)
 
         test_result = estimator.evaluate(input_fn=test_fn)
+        print("test results computed")
 
         test_predictions = estimator.predict(input_fn=test_fn)
+        print("test predictions computed")
 
-        return test_result, validation_result, training_result, test_predictions
+        return test_result, test_predictions

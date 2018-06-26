@@ -12,7 +12,9 @@ class TestMatrixCapsNet(tf.test.TestCase):
         self.guard.__enter__()
 
     def tearDown(self):
+        tf.reset_default_graph()
         self.guard.__exit__(None, None, None)
+        tf.reset_default_graph()
 
     def test_happy_flow_through_default_architecture(self):
         batch_count = 3
