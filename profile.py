@@ -20,9 +20,9 @@ def profile():
 
     mcne = MatrixCapsNetEstimator().init()
 
-    batch_size = 30
+    batch_size = 4
     epoch_count = 1
-    max_steps = 10
+    max_steps = 3
 
     def create_small_input_fn(fn):
         def input_fn():

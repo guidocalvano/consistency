@@ -124,6 +124,11 @@ class MatrixCapsNetEstimator:
     def create_estimator(self, small_norb, model_path, epoch_count=1):
         total_example_count = small_norb.training_example_count() * epoch_count
 
+        run_config = tf.estimator.RunConfig(
+            save_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
+            keep_checkpoint_max=5,  # Retain the 10 most recent checkpoints.
+        )
+
         estimator = tf.estimator.Estimator(
             lambda features, labels, mode, params: self.model_function(features, labels, mode, params),
             params={
