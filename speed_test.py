@@ -76,10 +76,18 @@ with tf.device('/gpu:0'):
     optimizer = tf.train.AdamOptimizer()
 
     train_op = optimizer.minimize(loss)
-sess = tf.Session()
+
+sess = tf.Session(config=tf.ConfigProto(
+      allow_soft_placement=True))
 sess.__enter__()
 sess.run(tf.global_variables_initializer())
 t0 = time.time()
 res = sess.run(train_op)
 t1 = time.time()
+print("run one")
+print(t1-t0)
+t0 = time.time()
+res = sess.run(train_op)
+t1 = time.time()
+print("run two")
 print(t1-t0)

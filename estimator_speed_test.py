@@ -15,7 +15,7 @@ def speed_test():
 
     os.makedirs(config.TF_TRASH_PATH)
 
-    # tf.logging.set_verbosity(tf.logging.INFO)
+    tf.logging.set_verbosity(tf.logging.INFO)
 
     sn = SmallNorb.from_cache()
 
@@ -47,9 +47,9 @@ def speed_test():
 
     eval_spec = tf.estimator.EvalSpec(
         input_fn=validation_fn,
-        start_delay_secs=5*60,
+        start_delay_secs=20*60,
         steps=1,  # use throttle and start delay instead
-        throttle_secs=15*60
+        throttle_secs=20*60
     )
     print("training estimator")
     t0 = time.time()
