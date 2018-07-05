@@ -26,7 +26,10 @@ def speed_test():
     def create_small_input_fn(fn):
         def input_fn():
             set = fn()
-            return tf.data.Dataset.from_tensor_slices(set).batch(batch_size)
+            return tf.data.Dataset.from_tensor_slices(set).\
+                shuffle(10000, reshuffle_each_iteration=True).\
+                take(int(set[0].shape[0] / 3)).\
+                batch(batch_size)
         return input_fn
 
     estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, epoch_count)
