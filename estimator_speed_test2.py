@@ -28,7 +28,7 @@ def speed_test():
             set = fn()
             return tf.data.Dataset.from_tensor_slices(set).\
                 shuffle(10000, reshuffle_each_iteration=True).\
-                take(int(set[0].shape[0] / 3)).\
+                take(tf.cast(tf.shape(set[0])[0] / 3, dtype=tf.int64)).\
                 batch(batch_size)
         return input_fn
 
