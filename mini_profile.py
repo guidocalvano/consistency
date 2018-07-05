@@ -14,6 +14,8 @@ def mini_profile():
 
     os.makedirs(config.TF_TRASH_PATH)
 
+    tf.logging.set_verbosity(tf.logging.INFO)
+
     sn = SmallNorb.from_cache()
 
     print("loaded data")

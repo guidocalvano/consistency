@@ -10,10 +10,6 @@ import time
 
 
 def speed_test():
-    if os.path.isdir(config.TF_TRASH_PATH):
-        shutil.rmtree(config.TF_TRASH_PATH)
-
-    os.makedirs(config.TF_TRASH_PATH)
 
     tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -34,29 +30,16 @@ def speed_test():
         return input_fn
 
     estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, epoch_count)
-    train_fn = create_small_input_fn(sn.default_training_set)
     validation_fn = create_small_input_fn(sn.default_validation_set)
-    test_fn = create_small_input_fn(sn.default_test_set)
 
     print("loaded data")
 
-    train_spec = tf.estimator.TrainSpec(
-        input_fn=train_fn,
-        max_steps=max_steps
-    )
-
-    eval_spec = tf.estimator.EvalSpec(
-        input_fn=validation_fn,
-        start_delay_secs=25*60,
-        steps=1,  # use throttle and start delay instead
-        throttle_secs=25*60
-    )
-    print("training estimator")
+    print("evaluating estimator")
     t0 = time.time()
-    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    estimator.evaluate(validation_fn)
     t1 = time.time()
     print(t1 - t0)
-    print("estimator trained")
+    print("estimator evaluated")
 
 
 if __name__ == "__main__":
