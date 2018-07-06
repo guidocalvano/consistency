@@ -26,7 +26,7 @@ def run():
 
     batch_size = 25
     epoch_count = 1
-    max_steps = epoch_count * (24300 * .8) / batch_size
+    max_steps = 200
 
     def create_input_fn(fn):
         def input_fn():
@@ -69,14 +69,16 @@ def run():
 
     train_spec = tf.estimator.TrainSpec(
         input_fn=train_fn,
-        max_steps=max_steps
+        max_steps=max_steps,
+        hooks=[training_profiler]
     )
 
     eval_spec = tf.estimator.EvalSpec(
         input_fn=validation_fn,
         start_delay_secs=5*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
         steps=1,  # use throttle and start delay instead
-        throttle_secs=5*60  # evaluate every 20 minutes on a random third of the evaluation set
+        throttle_secs=5*60,  # evaluate every 20 minutes on a random third of the evaluation set
+        hooks=[eval_profiler]
 
     )
     print("training estimator")
