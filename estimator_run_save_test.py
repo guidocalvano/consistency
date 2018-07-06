@@ -36,7 +36,7 @@ def run():
             set = fn()
             return tf.data.Dataset.from_tensor_slices(set).\
                 shuffle(10000, reshuffle_each_iteration=True).\
-                take(tf.cast(tf.shape(set[0])[0] / 7, dtype=tf.int64)).\
+                take(tf.cast(tf.shape(set[0])[0] / 9, dtype=tf.int64)).\
                 batch(batch_size)
         return input_fn
 
@@ -56,7 +56,7 @@ def run():
         input_fn=validation_fn,
         start_delay_secs=1*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
         steps=1,  # use throttle and start delay instead
-        throttle_secs=7*60  # evaluate every 20 minutes on a random third of the evaluation set
+        throttle_secs=4*60  # evaluate every 20 minutes on a random third of the evaluation set
 
     )
     print("training estimator")
