@@ -43,7 +43,7 @@ def run():
     estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, epoch_count)
     train_fn = create_input_fn(sn.default_training_set)
     validation_fn = create_reduced_input_fn(sn.default_validation_set)
-    test_fn = create_input_fn(sn.default_test_set)
+    test_fn = create_reduced_input_fn(sn.default_test_set)
 
     print("loaded data")
 
@@ -56,7 +56,7 @@ def run():
         input_fn=validation_fn,
         start_delay_secs=1*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
         steps=1,  # use throttle and start delay instead
-        throttle_secs=4*60  # evaluate every 20 minutes on a random third of the evaluation set
+        throttle_secs=4*60  # evaluate every 4 minutes on a random third of the evaluation set
 
     )
     print("training estimator")
