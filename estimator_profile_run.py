@@ -26,7 +26,7 @@ def run():
 
     batch_size = 25
     epoch_count = 1
-    max_steps = 200
+    max_steps = 100
 
     def create_input_fn(fn):
         def input_fn():
