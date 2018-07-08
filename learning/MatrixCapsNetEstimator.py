@@ -40,7 +40,7 @@ class MatrixCapsNetEstimator:
                                        name='acc_op')
 
         metrics = {'accuracy': accuracy}
-        tf.summary.scalar('accuracy', accuracy[1])
+        # tf.summary.scalar('accuracy', accuracy[1])
 
         if mode == tf.estimator.ModeKeys.EVAL:
             return tf.estimator.EstimatorSpec(
