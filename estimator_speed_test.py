@@ -47,9 +47,10 @@ def speed_test():
 
     eval_spec = tf.estimator.EvalSpec(
         input_fn=validation_fn,
-        start_delay_secs=250*60,
+        start_delay_secs=250*60,  # do not evaluate to test only training time
         steps=1,  # use throttle and start delay instead
-        throttle_secs=250*60
+        throttle_secs=250*60  # do not evaluate to test only training time
+
     )
     print("training estimator")
     t0 = time.time()
