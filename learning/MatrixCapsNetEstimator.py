@@ -79,14 +79,18 @@ class MatrixCapsNetEstimator:
             predicted_one_hot,   # [batch, class]
             margin: float  # float
     ):
-
-        difference_loss_per_class = correct_one_hot - predicted_one_hot
-
-        margin_loss_per_class = -difference_loss_per_class + margin  # order switched to make operator overloading work correctly
-
         class_axis = 1
+
+        activation_target_class = tf.reduce_sum(correct_one_hot * predicted_one_hot, axis=class_axis, keepdims=True)
+
+        difference_loss_per_class = activation_target_class - predicted_one_hot
+
+        margin_loss_per_class = -difference_loss_per_class + margin
+
+        incorrect_class = -correct_one_hot + 1.0
+
         spread_loss_per_class = tf.square(tf.maximum(tf.constant(0.0), margin_loss_per_class))
-        spread_loss = tf.reduce_sum(spread_loss_per_class) # everything should be summed
+        spread_loss = tf.reduce_sum(spread_loss_per_class * incorrect_class)  # everything should be summed, but only for incorrect classes
 
         return spread_loss
 
