@@ -32,7 +32,7 @@ class SmallNorb:
 
         unsplit_training_data =  self.load_and_convert_to_internal_representation(base_path_training)
 
-        split_training_data = self.split_by_objects(unsplit_training_data, .8)
+        split_training_data = self.split_by_objects(unsplit_training_data, config.TRAINING_VALIDATION_RATIO)
 
         self.training = split_training_data["training"]
         self.validation = split_training_data["validation"]

@@ -18,3 +18,4 @@ OUTPUT_PATH = os.path.join(PROJECT_ROOT, 'output')
 
 RESULT_FILE = os.path.join(OUTPUT_PATH, 'results.dill')
 MINI_RUN_RESULT_FILE = os.path.join(OUTPUT_PATH, 'mini_run_results.dill')
+TRAINING_VALIDATION_RATIO = .8

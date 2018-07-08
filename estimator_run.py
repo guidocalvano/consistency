@@ -20,7 +20,10 @@ def run():
 
     batch_size = 25
     epoch_count = 3
-    max_steps = epoch_count * (24300 * .8) / batch_size
+    non_test_example_count = 24300
+    example_count_per_epoch = non_test_example_count * config.TRAINING_VALIDATION_RATIO
+    total_examples_trained_on = epoch_count * example_count_per_epoch
+    max_steps = total_examples_trained_on / batch_size
 
     def create_input_fn(fn):
         def input_fn():
@@ -38,7 +41,10 @@ def run():
         return input_fn
 
     estimator = mcne.create_estimator(sn, config.TF_MODEL_PATH, epoch_count)
+
     train_fn = create_input_fn(sn.default_training_set)
+
+    # use reduced validation set to spread out validation between training iterations
     validation_fn = create_reduced_input_fn(sn.default_validation_set)
     test_fn = create_input_fn(sn.default_test_set)
 
@@ -65,11 +71,12 @@ def run():
 
     print("testing estimator")
     t0 = time.time()
-    estimator.evaluate(test_fn)
+    res = estimator.evaluate(test_fn)
     t1 = time.time()
     print(t1 - t0)
     print("testing evaluated")
-
+    print(res)
+    pickle.dump(res, open(config.RESULT_FILE, 'wb'))
 
 if __name__ == "__main__":
     run()
