@@ -125,7 +125,7 @@ class MatrixCapsNetEstimator:
         total_example_count = small_norb.training_example_count() * epoch_count
 
         run_config = tf.estimator.RunConfig(
-            # save_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
+            # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=20  # Retain the 20 most recent checkpoints.
         )
 
@@ -136,7 +136,9 @@ class MatrixCapsNetEstimator:
                 'iteration_count': 3,
                 'label_count': small_norb.label_count()
             },
-            model_dir=model_path)
+            model_dir=model_path,
+            config=run_config
+        )
 
         return estimator
 
