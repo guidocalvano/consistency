@@ -20,7 +20,7 @@ def run():
 
     batch_size = 25
     epoch_count = 3
-    non_test_example_count = 24300
+    non_test_example_count = 48600
     example_count_per_epoch = non_test_example_count * config.TRAINING_VALIDATION_RATIO
     total_examples_trained_on = epoch_count * example_count_per_epoch
     max_steps = total_examples_trained_on / batch_size
