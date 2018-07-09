@@ -52,7 +52,7 @@ def run():
 
     eval_spec = tf.estimator.EvalSpec(
         input_fn=validation_fn,
-        start_delay_secs=0,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
+        start_delay_secs=1,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
         steps=5, #,  # use throttle and start delay instead
         throttle_secs=0  # evaluate every 4 minutes on a random third of the evaluation set
     )
