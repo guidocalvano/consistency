@@ -10,7 +10,7 @@ import time
 
 def run():
     if os.path.isdir(config.TF_TRASH_PATH):
-        shutil.rmtree(config.TF_TRASH_PATH)
+        shutil.rmtree(config.TF_TRASH_PATH, ignore_errors=True)
 
     os.makedirs(config.TF_TRASH_PATH)
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -22,18 +22,18 @@ def run():
     mcne = MatrixCapsNetEstimator().init()
 
     batch_size = 25
-    epoch_count = 9
+    epoch_count = 8
     max_steps = 150
 
     def create_reduced_input_fn(fn):
         def input_fn():
             set = fn()
             return tf.data.Dataset.from_tensor_slices(set).\
-                take(tf.cast(tf.shape(set[0])[0] / 9, dtype=tf.int64)).\
+                take(tf.cast(tf.shape(set[0])[0] / 20, dtype=tf.int64)).\
                 batch(batch_size)
         return input_fn
 
-    estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, epoch_count)
+    estimator = mcne.create_estimator(sn, config.TF_DEBUG_MODEL_PATH, 8)  # by setting the epoch count to a low value the margin will be very high
 
     # keep repeating the same examples over and over again
     train_fn = create_reduced_input_fn(sn.default_validation_set)
@@ -51,7 +51,7 @@ def run():
         input_fn=validation_fn,
         start_delay_secs=1*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
         steps=0,  # use throttle and start delay instead
-        throttle_secs=4*60  # evaluate every 4 minutes on a random third of the evaluation set
+        throttle_secs=2*60  # evaluate every 4 minutes on a random third of the evaluation set
 
     )
     print("training estimator")
