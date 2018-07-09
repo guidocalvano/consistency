@@ -29,6 +29,7 @@ def run():
         def input_fn():
             set = fn()
             return tf.data.Dataset.from_tensor_slices(set).\
+                shuffle(10000, reshuffle_each_iteration=False).\
                 take(tf.cast(tf.shape(set[0])[0] / 20, dtype=tf.int64)).\
                 batch(batch_size)
         return input_fn
