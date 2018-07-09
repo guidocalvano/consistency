@@ -22,15 +22,17 @@ def run():
     mcne = MatrixCapsNetEstimator().init()
 
     batch_size = 25
-    epoch_count = 8
-    max_steps = 150
+    epoch_count = 40
+    batches_per_data_set = 4
+    elements_per_data_set = batch_size * batches_per_data_set
+    max_steps = batches_per_data_set * epoch_count
 
     def create_reduced_input_fn(fn):
         def input_fn():
             set = fn()
             return tf.data.Dataset.from_tensor_slices(set).\
                 shuffle(10000, reshuffle_each_iteration=False).\
-                take(tf.cast(tf.shape(set[0])[0] / 20, dtype=tf.int64)).\
+                take(elements_per_data_set).\
                 batch(batch_size)
         return input_fn
 
@@ -50,9 +52,9 @@ def run():
 
     eval_spec = tf.estimator.EvalSpec(
         input_fn=validation_fn,
-        start_delay_secs=1*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
-        steps=1,  # use throttle and start delay instead
-        throttle_secs=2*60  # evaluate every 4 minutes on a random third of the evaluation set
+        # start_delay_secs=1*60,  # evaluate every 20 minutes on a random third of the evaluation set. Evaluation takes about 5 minutes
+        steps=5#,  # use throttle and start delay instead
+        #throttle_secs=2*60  # evaluate every 4 minutes on a random third of the evaluation set
 
     )
     print("training estimator")
