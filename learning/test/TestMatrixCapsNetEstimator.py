@@ -100,6 +100,68 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
             self.assertFiniteAndShape(sl_output, [], "spread loss output must be finite and contain a single value after training")
 
+    def test_train_two_examples(self):
+
+        sn = SmallNorb.from_cache()
+        sn.reduce_to_two_examples(.3, .3)
+
+        mcne = MatrixCapsNetEstimator().init(architecture="build_simple_architecture")
+
+        first_session_max_steps = 1
+        batch_size = 17
+        epoch_count = 50
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, first_session_max_steps)
+
+        untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        second_session_max_steps = 1000
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
+
+        trained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        print("untrained performance" + str(untrained_performance))
+
+        print("trained performance" + str(trained_performance))
+
+        self.assertTrue(trained_performance > untrained_performance, "performance must increase")
+
+
+    def test_train_two_examples_without_spread_loss(self):
+
+        sn = SmallNorb.from_cache()
+        sn.reduce_to_two_examples(.3, .3)
+
+        def mean_squared_loss_adapter(
+                correct_one_hot,  # [batch, class]
+                predicted_one_hot,  # [batch, class]
+                params  # dictionary
+        ):
+            return tf.losses.mean_squared_error(correct_one_hot, predicted_one_hot)
+
+        mcne = MatrixCapsNetEstimator().init(loss_fn=mean_squared_loss_adapter, architecture="build_simple_architecture")
+
+        first_session_max_steps = 1
+        batch_size = 17
+        epoch_count = 50
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, first_session_max_steps)
+
+        untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        second_session_max_steps = 300
+        batch_size = 17
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
+
+        trained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        print("untrained performance" + str(untrained_performance))
+
+        print("trained performance" + str(trained_performance))
+
+        self.assertTrue(trained_performance > untrained_performance, "performance must increase")
 
     # def test_model_fn_training(self):
     #

@@ -85,6 +85,53 @@ class MatrixCapsNet:
 
         return aggregating_capsule_layer, spread_loss_margin, next_routing_state
 
+    def build_simple_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
+
+        routing_state = None
+
+        iteration_count = 3
+
+        texture_patches_A = 10
+        capsule_count_C = 4
+        capsule_count_D = 5
+
+        batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
+
+        progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
+
+        steepness_lambda = self.increasing_value(.01, .01, is_training)
+        spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+
+        convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+
+        # number of capsules is defined by number of texture patches
+        primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
+
+        conv_caps_layer_C = self.build_convolutional_capsule_layer(
+            primary_capsule_layer_B,
+            3,
+            2,
+            capsule_count_C,
+            steepness_lambda,
+            iteration_count,
+            routing_state
+        )
+
+        use_coordinate_addition = True
+        aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+            conv_caps_layer_C,
+            use_coordinate_addition,
+            capsule_count_D,
+            steepness_lambda,
+            iteration_count,
+            routing_state
+        )
+
+        next_routing_state = tf.get_collection("next_routing_state")
+
+        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+
+
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,
                                         use_coordinate_addition,

@@ -6,6 +6,7 @@ import os.path
 from input.MatFileReaderWriter import MatFileReaderWriter
 import datetime
 from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation
 import cv2
 import config
 
@@ -400,6 +401,43 @@ class SmallNorb:
             "examples": uint_example_tensor,
             "labels": int32_label_array,
             "meta": context_data_array
+        }
+
+    def reduce_to_two_examples(self, test_percentage, validation_percentage):
+        unique_labels, first_index_label = np.unique(self.training["labels"][:], return_index=True)
+        instance_ids = first_index_label[:2]
+
+        all_rows_of_instance = np.where(np.isin(self.training["meta"][:, 0], instance_ids))[0]
+        np.random.shuffle(all_rows_of_instance)
+
+        test_count = int(test_percentage * all_rows_of_instance.shape[0])
+        validation_count = int(validation_percentage * all_rows_of_instance.shape[0])
+
+        end_test_indices = test_count
+        end_validation_indices = test_count + validation_count
+        end_training_indices = all_rows_of_instance.shape[0]
+
+        test_indices = all_rows_of_instance[range(end_test_indices)]
+        validation_indices = all_rows_of_instance[range(end_test_indices, end_validation_indices)]
+        training_indices = all_rows_of_instance[range(end_validation_indices, end_training_indices)]
+
+        self.validation = {
+            "meta": self.training["meta"][validation_indices, :],
+            "examples": self.training["examples"][validation_indices, :, :, :],
+            "labels": self.training["labels"][validation_indices]
+        }
+
+        self.test = {
+            "meta": self.training["meta"][test_indices, :],
+            "examples": self.training["examples"][test_indices, :, :, :],
+            "labels": self.training["labels"][test_indices]
+        }
+
+        # this line must come last!
+        self.training = {
+            "meta": self.training["meta"][training_indices, :],
+            "examples": self.training["examples"][training_indices, :, :, :],
+            "labels": self.training["labels"][training_indices]
         }
 
     def training_example_count(self):

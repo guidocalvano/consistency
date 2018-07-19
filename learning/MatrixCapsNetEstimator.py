@@ -5,7 +5,40 @@ import config
 
 
 class MatrixCapsNetEstimator:
-    def init(self):
+
+
+    @staticmethod
+    def spread_loss(
+            correct_one_hot,  # [batch, class]
+            predicted_one_hot,   # [batch, class]
+            margin # float
+    ):
+        class_axis = 1
+
+        activation_target_class = tf.reduce_sum(correct_one_hot * predicted_one_hot, axis=class_axis, keepdims=True)
+
+        difference_loss_per_class = activation_target_class - predicted_one_hot
+
+        margin_loss_per_class = -difference_loss_per_class + margin
+
+        incorrect_class = -correct_one_hot + 1.0
+
+        spread_loss_per_class = tf.square(tf.maximum(tf.constant(0.0), margin_loss_per_class))
+        spread_loss = tf.reduce_sum(spread_loss_per_class * incorrect_class)  # everything should be summed, but only for incorrect classes
+
+        return spread_loss
+
+    @staticmethod
+    def spread_loss_adapter(
+            correct_one_hot,  # [batch, class]
+            predicted_one_hot,  # [batch, class]
+            params  # dictionary
+    ):
+        return MatrixCapsNetEstimator.spread_loss(correct_one_hot, predicted_one_hot, params["margin"])
+
+    def init(self, loss_fn=spread_loss_adapter.__func__, architecture="build_default_architecture"):
+        self.loss_fn = loss_fn
+        self.architecture = architecture
         return self
 
     def model_function(self, examples, labels, mode, params):
@@ -14,11 +47,11 @@ class MatrixCapsNetEstimator:
         iteration_count = params["iteration_count"]
         label_count = params["label_count"]
 
-        is_training = tf.constant(mode==tf.estimator.ModeKeys.TRAIN)
+        is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
         routing_state = None
 
         network_output, spread_loss_margin, reset_routing_configuration_op = \
-            MatrixCapsNet().build_default_architecture(examples, total_example_count, iteration_count, routing_state, is_training)
+            getattr(MatrixCapsNet(), self.architecture)(examples, total_example_count, iteration_count, routing_state, is_training)
 
         (activations, poses) = network_output
 
@@ -32,7 +65,8 @@ class MatrixCapsNetEstimator:
             }
             return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-        loss = self.spread_loss(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), spread_loss_margin)
+        loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
+            "margin": spread_loss_margin})
 
         # Compute evaluation metrics.
         accuracy = tf.metrics.accuracy(labels=labels,
@@ -72,28 +106,6 @@ class MatrixCapsNetEstimator:
 
         return train_spec
 
-
-    def spread_loss(
-            self,
-            correct_one_hot,  # [batch, class]
-            predicted_one_hot,   # [batch, class]
-            margin: float  # float
-    ):
-        class_axis = 1
-
-        activation_target_class = tf.reduce_sum(correct_one_hot * predicted_one_hot, axis=class_axis, keepdims=True)
-
-        difference_loss_per_class = activation_target_class - predicted_one_hot
-
-        margin_loss_per_class = -difference_loss_per_class + margin
-
-        incorrect_class = -correct_one_hot + 1.0
-
-        spread_loss_per_class = tf.square(tf.maximum(tf.constant(0.0), margin_loss_per_class))
-        spread_loss = tf.reduce_sum(spread_loss_per_class * incorrect_class)  # everything should be summed, but only for incorrect classes
-
-        return spread_loss
-
     def train_and_test(self, small_norb, batch_size=30, epoch_count=10, max_steps=None, model_path=config.TF_MODEL_PATH):
 
         if max_steps is None:
@@ -125,7 +137,7 @@ class MatrixCapsNetEstimator:
 
         return test_result, validation_result, test_predictions
 
-    def create_estimator(self, small_norb, model_path, epoch_count=1):
+    def create_estimator(self, small_norb, model_path, epoch_count=1.0):
         total_example_count = small_norb.training_example_count() * epoch_count
 
         run_config = tf.estimator.RunConfig(
@@ -157,8 +169,12 @@ class MatrixCapsNetEstimator:
             .shuffle(100000)\
             .repeat(epoch_count)\
             .batch(batch_size)
+        validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
 
-        tf.estimator.train(estimator, input_fn=train_fn)
+        train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
+        eval_spec = tf.estimator.EvalSpec(input_fn=validation_fn)
+
+        tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
         print("training complete")
 
 
