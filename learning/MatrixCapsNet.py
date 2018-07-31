@@ -43,7 +43,7 @@ class MatrixCapsNet:
 
             progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
 
-            steepness_lambda = self.increasing_value(.01, .01, is_training)
+            steepness_lambda = tf.constant(2.0)# self.increasing_value(.01, .01, is_training)
             spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
 
             convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
@@ -131,6 +131,108 @@ class MatrixCapsNet:
 
         return aggregating_capsule_layer, spread_loss_margin, next_routing_state
 
+    def build_experimental_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
+
+        with tf.name_scope('default_matrix_capsule_architecture') as scope0:
+
+            texture_patches_A = 32
+            capsule_count_C = 32
+            capsule_count_D = 32
+            capsule_count_E = 5
+
+            batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
+
+            progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
+
+            steepness_lambda = tf.constant(2.0)# self.increasing_value(.01, .01, is_training)
+            spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(
+                convolution_layer_A,
+                simplify_to_axial_system=True
+            )
+
+            conv_caps_layer_C = self.build_convolutional_capsule_layer(
+                primary_capsule_layer_B,
+                3,
+                2,
+                capsule_count_C,
+                steepness_lambda,
+                iteration_count,
+                routing_state,
+                simplify_to_axial_system=True
+            )
+
+            conv_caps_layer_D = self.build_convolutional_capsule_layer(
+                conv_caps_layer_C,
+                3,
+                1,
+                capsule_count_D,
+                steepness_lambda,
+                iteration_count,
+                routing_state,
+                simplify_to_axial_system=True
+            )
+
+            use_coordinate_addition = True
+            aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+                conv_caps_layer_D,
+                use_coordinate_addition,
+                capsule_count_E,
+                steepness_lambda,
+                iteration_count,
+                routing_state,
+                simplify_to_axial_system=True
+            )
+
+            next_routing_state = tf.get_collection("next_routing_state")
+
+        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+
+    def add_orthogonal_loss(self, # adds loss of dot product of components of a set of axial system matrices
+                              axial_system_list  # [axial_system, vector, component]
+        ):
+        # the objective is to reduce orthogonal loss to 0 for every single axial system it is applied to, so
+        # it should be based on l1 regularization
+
+        vector_axis = 1
+        component_axis = 2
+
+        x_axis = tf.gather(axial_system_list, [0], axis=vector_axis)
+        y_axis = tf.gather(axial_system_list, [1], axis=vector_axis)
+        z_axis = tf.gather(axial_system_list, [2], axis=vector_axis)
+
+        non_orthogonal_error = tf.reduce_sum(x_axis * y_axis + y_axis * z_axis + z_axis * x_axis, axis=component_axis)
+
+        # this causes orthogonal loss to be regularized analogous to l1 regularization, pushing it down to 0
+        non_orthogonal_loss = tf.abs(non_orthogonal_error)
+
+        tf.add_to_collection("orthogonal_regularization", non_orthogonal_loss)
+
+    def add_unit_scale_loss(self, # adds loss of dot product of components of a set of axial system matrices
+                              axial_system_list  # [axial_system, vector, component]
+        ):
+        # The objective is to make every axial system have unit scale [1, 1, 1]
+        # To accomplish this all actual_scale - unit_scale should equal [0, 0, 0]
+        # Minimizing the absolute difference (analogous to L1 regularization) has this effect
+
+        vector_axis = 1
+        component_axis = 2
+
+        # derivative of sqrt for non zero input is problematic. This makes
+        non_zero_abs_axial_system_list = tf.abs(axial_system_list) + sys.float_info.epsilon
+
+        scale_list = tf.sqrt(tf.reduce_sum(non_zero_abs_axial_system_list * non_zero_abs_axial_system_list, axis=component_axis))
+
+        scale_error = scale_list - 1.0  # the difference between the actual scale and 1 is the error
+
+        # By using the absolute error as the loss behavior analogous to L1 regularization will push
+        scale_loss = tf.abs(scale_error)
+
+        tf.add_to_collection("unit_scale_regularization", scale_loss)
 
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,
@@ -138,7 +240,9 @@ class MatrixCapsNet:
                                         parent_count,
                                         steepness_lambda,
                                         iteration_count,
-                                        routing_state=None):
+                                        routing_state=None,
+                                        simplify_to_axial_system=False
+        ):
 
         with tf.name_scope('aggregating_capsule_layer') as scope0:
 
@@ -174,7 +278,8 @@ class MatrixCapsNet:
                 normal_input_activations,
                 normal_input_poses,
                 routing_state,
-                normal_layer_coordinate_addition
+                normal_layer_coordinate_addition,
+                simplify_to_axial_system
             )
 
         return aggregated_capsule_layer
@@ -225,23 +330,42 @@ class MatrixCapsNet:
     #
     #     return reconstruction_prediction_layer, reconstruction_loss
 
-    def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count):
+    def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count,
+                                  simplify_to_axial_system=False):
+
+        elements_per_pose = 16
+        pose_axis_element_count = 4
+
+        if simplify_to_axial_system:
+            elements_per_pose = 12
+            pose_axis_element_count = 3
 
         pose_element_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
-            filters=input_filter_count * 16,
+            filters=input_filter_count * elements_per_pose,
             activation=None,
             name='extract_poses'
         )
+
         pose_shape = pose_element_layer.get_shape()
 
         parent_broadcast_dim = 1
         pose_layer = tf.reshape(
             pose_element_layer,
-            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, parent_broadcast_dim, 4, 4],
+            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, parent_broadcast_dim, 4, pose_axis_element_count],
             name='reshape_poses'
         )
+
+        pose_axis_element_axis = 6
+
+        if simplify_to_axial_system:
+            pose_layer = tf.concat([pose_layer, tf.constant([0.0, 0.0, 0.0, 1.0])], axis=pose_axis_element_axis)
+
+            axial_system_list = tf.reshape(pose_layer, shape=[-1, 4, 4])
+
+            self.add_orthogonal_loss(axial_system_list)
+            self.add_unit_scale_loss(axial_system_list)
 
         return pose_layer
 
@@ -265,7 +389,8 @@ class MatrixCapsNet:
 
         return activation_layer
 
-    def build_primary_matrix_caps(self, input_layer):
+    def build_primary_matrix_caps(self, input_layer,
+                                  simplify_to_axial_system=False):
 
         with tf.name_scope('primary_matrix_capsules') as scope0:
 
@@ -273,8 +398,16 @@ class MatrixCapsNet:
 
             input_filter_count = input_layer.get_shape()[filter_axis]
 
-            activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count)
-            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count)
+            activation_layer = self.build_cast_conv_to_activation_layer(
+                input_layer,
+                input_filter_count
+            )
+
+            pose_layer = self.build_cast_conv_to_pose_layer(
+                input_layer,
+                input_filter_count,
+                simplify_to_axial_system
+            )
 
         return [activation_layer, pose_layer]
 
@@ -285,7 +418,10 @@ class MatrixCapsNet:
                                           parent_count,
                                           steepness_lambda,
                                           iteration_count,
-                                          routing_state
+                                          routing_state,
+                                          simplify_to_axial_system=False,
+                                          orthogonal_regularization=False,
+                                          convolved_feature_count=-1
                                           ):
 
         return self.build_convolution_of(
@@ -299,11 +435,16 @@ class MatrixCapsNet:
                     iteration_count,
                     activations,
                     poses,
-                    routing_state
+                    routing_state,
+                    simplify_to_axial_system=simplify_to_axial_system
                 )
         )
 
-    def build_convolution_of(self, input_feature_image_layer_list, kernel_size: int, stride: int, filter_layer_constructor):
+    def build_convolution_of(self,
+                             input_feature_image_layer_list,
+                             kernel_size: int,
+                             stride: int,
+                             filter_layer_constructor):
 
         with tf.name_scope('convolution_layer') as scope0:
 
@@ -404,7 +545,11 @@ class MatrixCapsNet:
 
         return results
 
-    def build_potential_parent_pose_layer(self, child_poses, parent_capsule_count):
+    def build_potential_parent_pose_layer(self,
+                                          child_poses,
+                                          parent_capsule_count,
+                                          simplify_to_axial_system=False
+        ):
         with tf.name_scope('potential_parent_pose_layer') as scope:
             # retrieve relevant dimensions
             child_poses_shape = numpy_shape_ct(child_poses)
@@ -415,9 +560,23 @@ class MatrixCapsNet:
 
             # A pose transform matrix exists from each child to each parent.
             # Weights with bigger stddev improve numerical stability
+            pose_axis_element_axis = 4
+            pose_axis_element_count = 4
+
+            if simplify_to_axial_system:
+                pose_axis_element_count = 3
+
             pose_transform_weights = tf.Variable(
-                tf.truncated_normal([1, child_capsule_count, parent_capsule_count, 4, 4], mean=0.0, stddev=1.0),
+                tf.truncated_normal([1, child_capsule_count, parent_capsule_count, 4, pose_axis_element_count], mean=0.0, stddev=1.0),
                 dtype=tf.float32, name='pose_transform_weights')
+
+            if simplify_to_axial_system:
+                pose_transform_weights = tf.concat([pose_transform_weights, tf.constant([0.0, 0.0, 0.0, 1.0])], axis=pose_axis_element_axis)
+
+                axial_system_list = tf.reshape(pose_transform_weights, shape=[-1, 4, 4])
+
+                self.add_orthogonal_loss(axial_system_list)
+                self.add_unit_scale_loss(axial_system_list)
 
             # Potential parent poses must be predicted for each batch row. So weights must be copied for each batch row.
             pose_transform_weights_copied_for_batch = tf.tile(pose_transform_weights, [batch_size, 1, 1, 1, 1], name='pose_transform_tiled')
@@ -487,7 +646,7 @@ class MatrixCapsNet:
                             potential_parent_pose_vectors,
                             beta_u,
                             beta_a,
-                            steepness_lambda
+                            tf.pow(steepness_lambda, float(i))
                         )
 
                     # the final iteration of this loop will needlessly produce an extra set of nodes using below code,
@@ -671,11 +830,17 @@ class MatrixCapsNet:
             child_activation_vector,
             child_pose_layer,
             routing_state,
-            convolution_coordinates=None):
+            convolution_coordinates=None,
+            simplify_to_axial_system=False
+    ):
 
         with tf.name_scope('matrix_capsule_layer') as scope:
 
-            potential_parent_poses = self.build_potential_parent_pose_layer(child_pose_layer, parent_count)
+            potential_parent_poses = self.build_potential_parent_pose_layer(
+                child_pose_layer,
+                parent_count,
+                simplify_to_axial_system
+            )
 
             [batch_size, child_count, _, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
 
@@ -707,6 +872,14 @@ class MatrixCapsNet:
             parent_pose_vectors_without_coordinate_addition = parent_pose_vectors[:, :, :, :16]
             parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors_without_coordinate_addition, shape=[batch_size, new_child_count, new_parent_broadcast_dim, pose_matrix_width, pose_matrix_height])
 
+            pose_axis_element_axis = 4
+            if simplify_to_axial_system:
+
+                axial_system_list = tf.reshape(parent_as_child_pose_matrices, shape=[-1, 4, 4])
+
+                self.add_unit_scale_loss(axial_system_list)
+                self.add_orthogonal_loss(axial_system_list)
+
         return parent_as_child_activations, parent_as_child_pose_matrices
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
@@ -736,6 +909,38 @@ class MatrixCapsNet:
         value = tf.cond(is_training, lambda: value.assign(value + increase), lambda: value)
 
         return value
+
+    def map_features_to_plane(self, input_layer, plane_shape):
+        output_shape = [-1] + plane_shape + input_layer.get_shape()[1:]
+
+        output_layer = tf.reshape(input_layer, shape=output_shape)
+
+        return output_layer
+
+    def extract_torus_image_patches(self, input_layer, ksize, strides, rates):
+
+        input_extension = self._expand_input_for_toroid_patches(input_layer, ksize)
+
+        image_patches = tf.extract_image_patches(input_extension, ksizes=ksize, strides=strides, rates=rates, padding='VALID')
+
+        return image_patches
+
+    def _expand_input_for_toroid_patches(self, input_layer, ksize):
+        extension_size = ksize - 1
+
+        bottom_extension = tf.gather(input_layer, indices=range(extension_size), axis=1)
+        side_extension = tf.gather(input_layer, indices=range(extension_size), axis=2)
+
+        bottom_side_extension = tf.gather(bottom_extension, indices=range(extension_size), axis=2)
+
+        input_with_side_extension = tf.concat([input_layer, side_extension], axis=2)
+        bottom_with_side_extension = tf.concat([bottom_extension, bottom_side_extension], axis=2)
+
+        full_extension = tf.concat([input_with_side_extension, bottom_with_side_extension], axis=1)
+
+        return full_extension
+
+
 
 # get tensor's shape at graph construction time and standardizes it into a numpy array, such that reshape and all the
 # other tensor flow functions can work with it
