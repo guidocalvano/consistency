@@ -191,6 +191,65 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
     #
     #     pass
 
+    def test_experimental_architecture(self):
+        sn = SmallNorb.from_cache()
+        sn.limit_by_split(30)
+        print("data loaded")
+        mcne = MatrixCapsNetEstimator().init(architecture="build_experimental_architecture", regularization_loss_weights={
+            'orthogonal': .1,
+            'unit_scale': .1
+        })
+
+        first_results = mcne.train_and_test(sn, batch_size=3, epoch_count=1, max_steps=1, model_path=config.TF_DEBUG_MODEL_PATH)
+        test_result, validation_result, test_predictions = first_results
+
+        self.assertTrue(np.isfinite(test_result['accuracy']), "test accuracy must be finite")
+        self.assertTrue(np.isfinite(test_result['loss']), "test loss must be finite")
+        self.assertTrue(np.isfinite(test_result['global_step']), "test global_step must be finite")
+
+        self.assertTrue(np.isfinite(validation_result['accuracy']), "validation accuracy must be finite")
+        self.assertTrue(np.isfinite(validation_result['loss']), "validation loss must be finite")
+        self.assertTrue(np.isfinite(validation_result['global_step']), "validation global_step must be finite")
+
+        tp = list(test_predictions)
+
+        self.assertTrue(len(tp) == 30, 'there must be predictions for every test set element')
+
+        for p in tp:
+            self.assertFiniteAndShape(p['class_ids'], [1], "class ids must be finite and of correct shape")
+            self.assertFiniteAndShape(p['probabilities'], [5, 1, 1], "probabilities must be finite and of correct shape")
+            self.assertFiniteAndShape(p['activations'], [5, 1, 1], "activations must be finite and of correct shape")
+            self.assertFiniteAndShape(p['poses'], [5, 1, 4, 4], "poses must be finite and of correct shape")
+
+
+        print("first test completed")
+        # assert that first result have correct shape and do not contain nans
+
+        second_results = mcne.train_and_test(sn, batch_size=3, epoch_count=1, max_steps=5, model_path=config.TF_DEBUG_MODEL_PATH)
+
+        test_result, validation_result, test_predictions = second_results
+
+
+        self.assertTrue(np.isfinite(test_result['accuracy']), "test accuracy must be finite")
+        self.assertTrue(np.isfinite(test_result['loss']), "test loss must be finite")
+        self.assertTrue(np.isfinite(test_result['global_step']), "test global_step must be finite")
+
+        self.assertTrue(np.isfinite(validation_result['accuracy']), "validation accuracy must be finite")
+        self.assertTrue(np.isfinite(validation_result['loss']), "validation loss must be finite")
+        self.assertTrue(np.isfinite(validation_result['global_step']), "validation global_step must be finite")
+
+        tp = list(test_predictions)
+
+        self.assertTrue(len(tp) == 30, 'there must be predictions for every test set element')
+
+        for p in tp:
+            self.assertFiniteAndShape(p['class_ids'], [1], "class ids must be finite and of correct shape")
+            self.assertFiniteAndShape(p['probabilities'], [5, 1, 1], "probabilities must be finite and of correct shape")
+            self.assertFiniteAndShape(p['activations'], [5, 1, 1], "activations must be finite and of correct shape")
+            self.assertFiniteAndShape(p['poses'], [5, 1, 4, 4], "poses must be finite and of correct shape")
+
+
+
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):
         self.assertTrue(np.isfinite(tensor_array).all(), message + ": does not have finite data")
         self.assertTrue((np.array(tensor_array.shape) ==

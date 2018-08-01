@@ -36,9 +36,10 @@ class MatrixCapsNetEstimator:
     ):
         return MatrixCapsNetEstimator.spread_loss(correct_one_hot, predicted_one_hot, params["margin"])
 
-    def init(self, loss_fn=spread_loss_adapter.__func__, architecture="build_default_architecture"):
+    def init(self, loss_fn=spread_loss_adapter.__func__, architecture="build_default_architecture", regularization_loss_weights={}):
         self.loss_fn = loss_fn
         self.architecture = architecture
+        self.regularization_loss_weights = regularization_loss_weights
         return self
 
     def model_function(self, examples, labels, mode, params):
@@ -50,7 +51,7 @@ class MatrixCapsNetEstimator:
         is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
         routing_state = None
 
-        network_output, spread_loss_margin, reset_routing_configuration_op = \
+        network_output, spread_loss_margin, reset_routing_configuration_op, regularization_loss_dict = \
             getattr(MatrixCapsNet(), self.architecture)(examples, total_example_count, iteration_count, routing_state, is_training)
 
         (activations, poses) = network_output
@@ -65,8 +66,15 @@ class MatrixCapsNetEstimator:
             }
             return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-        loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
+        prediction_loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
             "margin": spread_loss_margin})
+
+        regularization_loss = tf.constant(0.0)
+
+        for name, regularizer in self.regularization_loss_weights.items():
+            regularization_loss += sum(regularization_loss_dict[name]) * self.regularization_loss_weights[name]
+
+        loss = prediction_loss + regularization_loss
 
         # Compute evaluation metrics.
         accuracy = tf.metrics.accuracy(labels=labels,

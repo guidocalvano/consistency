@@ -83,57 +83,58 @@ class MatrixCapsNet:
 
             next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+        return aggregating_capsule_layer, spread_loss_margin, next_routing_state, {}
 
     def build_simple_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
 
-        routing_state = None
+        with tf.name_scope('simple_matrix_capsule_architecture') as scope0:
+            routing_state = None
 
-        iteration_count = 3
+            iteration_count = 3
 
-        texture_patches_A = 10
-        capsule_count_C = 4
-        capsule_count_D = 5
+            texture_patches_A = 10
+            capsule_count_C = 4
+            capsule_count_D = 5
 
-        batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
+            batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
 
-        progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
+            progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
 
-        steepness_lambda = self.increasing_value(.01, .01, is_training)
-        spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+            steepness_lambda = self.increasing_value(.01, .01, is_training)
+            spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
 
-        convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
-        # number of capsules is defined by number of texture patches
-        primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
-        conv_caps_layer_C = self.build_convolutional_capsule_layer(
-            primary_capsule_layer_B,
-            3,
-            2,
-            capsule_count_C,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            conv_caps_layer_C = self.build_convolutional_capsule_layer(
+                primary_capsule_layer_B,
+                3,
+                2,
+                capsule_count_C,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        use_coordinate_addition = True
-        aggregating_capsule_layer = self.build_aggregating_capsule_layer(
-            conv_caps_layer_C,
-            use_coordinate_addition,
-            capsule_count_D,
-            steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            use_coordinate_addition = True
+            aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+                conv_caps_layer_C,
+                use_coordinate_addition,
+                capsule_count_D,
+                steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        next_routing_state = tf.get_collection("next_routing_state")
+            next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+            return aggregating_capsule_layer, spread_loss_margin, next_routing_state, {}
 
     def build_experimental_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
 
-        with tf.name_scope('default_matrix_capsule_architecture') as scope0:
+        with tf.name_scope('experimental_matrix_capsule_architecture') as scope0:
 
             texture_patches_A = 32
             capsule_count_C = 32
@@ -190,7 +191,10 @@ class MatrixCapsNet:
 
             next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+            orthogonal_loss = tf.get_collection("orthogonal_regularization")
+            unit_scale_loss = tf.get_collection("unit_scale_regularization")
+
+        return aggregating_capsule_layer, spread_loss_margin, next_routing_state, {'orthogonal': orthogonal_loss, 'unit_scale': unit_scale_loss}
 
     def add_orthogonal_loss(self, # adds loss of dot product of components of a set of axial system matrices
                               axial_system_list  # [axial_system, vector, component]
@@ -208,7 +212,7 @@ class MatrixCapsNet:
         non_orthogonal_error = tf.reduce_sum(x_axis * y_axis + y_axis * z_axis + z_axis * x_axis, axis=component_axis)
 
         # this causes orthogonal loss to be regularized analogous to l1 regularization, pushing it down to 0
-        non_orthogonal_loss = tf.abs(non_orthogonal_error)
+        non_orthogonal_loss = tf.reduce_sum(tf.abs(non_orthogonal_error))
 
         tf.add_to_collection("orthogonal_regularization", non_orthogonal_loss)
 
@@ -230,7 +234,7 @@ class MatrixCapsNet:
         scale_error = scale_list - 1.0  # the difference between the actual scale and 1 is the error
 
         # By using the absolute error as the loss behavior analogous to L1 regularization will push
-        scale_loss = tf.abs(scale_error)
+        scale_loss = tf.reduce_sum(tf.abs(scale_error))
 
         tf.add_to_collection("unit_scale_regularization", scale_loss)
 
@@ -357,10 +361,11 @@ class MatrixCapsNet:
             name='reshape_poses'
         )
 
+        pose_axis_vector_axis = 5
         pose_axis_element_axis = 6
-
         if simplify_to_axial_system:
-            pose_layer = tf.concat([pose_layer, tf.constant([0.0, 0.0, 0.0, 1.0])], axis=pose_axis_element_axis)
+
+            pose_layer = self.append_axial_system_row(pose_layer)
 
             axial_system_list = tf.reshape(pose_layer, shape=[-1, 4, 4])
 
@@ -368,6 +373,22 @@ class MatrixCapsNet:
             self.add_unit_scale_loss(axial_system_list)
 
         return pose_layer
+
+    def append_axial_system_row(self, axial_system_tensor):
+        pose_axis_vector_axis = -2
+        pose_axis_element_axis = -1
+        axial_system_tensor_shape = tf.shape(axial_system_tensor)
+        tilable_axial_system_shape = np.ones([axial_system_tensor_shape.get_shape()[0].value])
+        bottom_row_axial_system = [0.0, 0.0, 0.0, 1.0]
+        tilable_axial_system_shape[pose_axis_vector_axis] = len(bottom_row_axial_system)
+        tilable_bottom_row_axial_system = tf.reshape(tf.constant(bottom_row_axial_system),
+                                                     shape=tilable_axial_system_shape)
+        tiling_shape = tf.concat([axial_system_tensor_shape[0:(pose_axis_vector_axis)], tf.constant([1, 1])], axis=0)
+        tiled_bottom_row_axial_system = tf.tile(tilable_bottom_row_axial_system, tiling_shape)
+
+        axial_system_tensor = tf.concat([axial_system_tensor, tiled_bottom_row_axial_system], axis=pose_axis_element_axis)
+
+        return axial_system_tensor
 
     def build_cast_conv_to_activation_layer(self, input_layer, input_filter_count):
 
@@ -419,9 +440,7 @@ class MatrixCapsNet:
                                           steepness_lambda,
                                           iteration_count,
                                           routing_state,
-                                          simplify_to_axial_system=False,
-                                          orthogonal_regularization=False,
-                                          convolved_feature_count=-1
+                                          simplify_to_axial_system=False
                                           ):
 
         return self.build_convolution_of(
@@ -571,7 +590,8 @@ class MatrixCapsNet:
                 dtype=tf.float32, name='pose_transform_weights')
 
             if simplify_to_axial_system:
-                pose_transform_weights = tf.concat([pose_transform_weights, tf.constant([0.0, 0.0, 0.0, 1.0])], axis=pose_axis_element_axis)
+                # pose_transform_weights = tf.concat([pose_transform_weights, tf.constant([0.0, 0.0, 0.0, 1.0])], axis=pose_axis_element_axis)
+                pose_transform_weights = self.append_axial_system_row(pose_transform_weights)
 
                 axial_system_list = tf.reshape(pose_transform_weights, shape=[-1, 4, 4])
 

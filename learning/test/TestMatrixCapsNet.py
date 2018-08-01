@@ -27,7 +27,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         input_layer = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
 
-        network_output, spread_loss_margin, next_routing_state = MatrixCapsNet().build_default_architecture(input_layer, full_example_count, iteration_count, routing_state, is_training)
+        network_output, spread_loss_margin, next_routing_state, regularization_loss_dictionary = MatrixCapsNet().build_default_architecture(input_layer, full_example_count, iteration_count, routing_state, is_training)
 
         self.sess.run(tf.global_variables_initializer())
 
