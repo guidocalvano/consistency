@@ -225,7 +225,7 @@ class CameraBase(ShowBase):
             alpha = np.full(depth_image.shape[:2] + (1,), 255, dtype=np.uint8)
             depth_image = np.concatenate([depth_image, alpha], axis=-1)
         images = np.concatenate([image, depth_image], axis=1)
-        images = cv2.cvtColor(images, cv2.COLOR_RGB2BGR) 
+        images = cv2.cvtColor(images, cv2.COLOR_RGB2BGR)
         cv2.imshow(window_name, images)
         key = cv2.waitKey(delay)
         key &= 255
