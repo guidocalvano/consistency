@@ -27,15 +27,15 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         input_layer = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
 
-        network_output, spread_loss_margin, next_routing_state = MatrixCapsNet().build_default_architecture(input_layer, full_example_count, iteration_count, routing_state, is_training)
+        network_output, next_routing_state = MatrixCapsNet().build_default_architecture(input_layer, iteration_count, routing_state)
 
         self.sess.run(tf.global_variables_initializer())
 
-        output_data = self.sess.run([network_output, spread_loss_margin, next_routing_state], feed_dict={
+        output_data = self.sess.run([network_output, next_routing_state], feed_dict={
             input_layer: random_input_images
         })
 
-        network_output_data, spread_loss_margin_data, next_routing_state_data = output_data
+        network_output_data, next_routing_state_data = output_data
         activations, poses = network_output_data
 
         self.assertFiniteAndShape(activations, [batch_count, output_count, 1, 1], 'happy flow through default network; activations')
@@ -60,8 +60,6 @@ class TestMatrixCapsNet(tf.test.TestCase):
                                   [patch_batch_count_layer_C, flattened_convolutional_child_count_C_and_d, capsule_filter_count_layer_C_and_D, 1], "second routing layer weights must be stored correctly")
         self.assertFiniteAndShape(next_routing_state_data[2],
                                   [batch_count, output_count_layer_D, output_count, 1], "final routing layer weights must be stored correctly")
-
-        self.assertTrue(spread_loss_margin_data > .2, "spread loss should have increased (actual correct increase is tested elsewhere")
 
     def test_progress_percentage_node(self):
         batch_size = 5

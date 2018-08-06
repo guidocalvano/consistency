@@ -30,7 +30,7 @@ class MatrixCapsNet:
 
     '''
 
-    def build_default_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
+    def build_default_architecture(self, input_layer, iteration_count, routing_state):
 
         with tf.name_scope('default_matrix_capsule_architecture') as scope0:
 
@@ -39,12 +39,7 @@ class MatrixCapsNet:
             capsule_count_D = 32
             capsule_count_E = 5
 
-            batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
-
-            progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
-
-            steepness_lambda = self.increasing_value(.01, .01, is_training)
-            spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+            final_steepness_lambda = tf.constant(.01)
 
             convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
@@ -56,7 +51,7 @@ class MatrixCapsNet:
                 3,
                 2,
                 capsule_count_C,
-                steepness_lambda,
+                final_steepness_lambda,
                 iteration_count,
                 routing_state
             )
@@ -66,7 +61,7 @@ class MatrixCapsNet:
                 3,
                 1,
                 capsule_count_D,
-                steepness_lambda,
+                final_steepness_lambda,
                 iteration_count,
                 routing_state
             )
@@ -76,16 +71,16 @@ class MatrixCapsNet:
                 conv_caps_layer_D,
                 use_coordinate_addition,
                 capsule_count_E,
-                steepness_lambda,
+                final_steepness_lambda,
                 iteration_count,
                 routing_state
             )
 
             next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+        return aggregating_capsule_layer, next_routing_state
 
-    def build_simple_architecture(self, input_layer, full_example_count, iteration_count, routing_state, is_training):
+    def build_simple_architecture(self, input_layer, iteration_count, routing_state):
 
         routing_state = None
 
@@ -95,12 +90,7 @@ class MatrixCapsNet:
         capsule_count_C = 4
         capsule_count_D = 5
 
-        batch_size = tf.cast(tf.gather(tf.shape(input_layer), 0), tf.float32)
-
-        progress_percentage_node = self.progress_percentage_node(batch_size, full_example_count, is_training)[0]
-
-        steepness_lambda = self.increasing_value(.01, .01, is_training)
-        spread_loss_margin = self.changing_value(.2, .9, progress_percentage_node)
+        final_steepness_lambda = self.increasing_value(.01, .01, is_training)
 
         convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
@@ -112,7 +102,7 @@ class MatrixCapsNet:
             3,
             2,
             capsule_count_C,
-            steepness_lambda,
+            final_steepness_lambda,
             iteration_count,
             routing_state
         )
@@ -122,21 +112,21 @@ class MatrixCapsNet:
             conv_caps_layer_C,
             use_coordinate_addition,
             capsule_count_D,
-            steepness_lambda,
+            final_steepness_lambda,
             iteration_count,
             routing_state
         )
 
         next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, spread_loss_margin, next_routing_state
+        return aggregating_capsule_layer, next_routing_state
 
 
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,
                                         use_coordinate_addition,
                                         parent_count,
-                                        steepness_lambda,
+                                        final_steepness_lambda,
                                         iteration_count,
                                         routing_state=None):
 
@@ -169,7 +159,7 @@ class MatrixCapsNet:
 
             aggregated_capsule_layer = self.build_matrix_caps(
                 parent_count,
-                steepness_lambda,
+                final_steepness_lambda,
                 iteration_count,
                 normal_input_activations,
                 normal_input_poses,
@@ -283,7 +273,7 @@ class MatrixCapsNet:
                                           kernel_size,
                                           stride,
                                           parent_count,
-                                          steepness_lambda,
+                                          final_steepness_lambda,
                                           iteration_count,
                                           routing_state
                                           ):
@@ -295,7 +285,7 @@ class MatrixCapsNet:
             lambda activations, poses:
                 self.build_matrix_caps(
                     parent_count,
-                    steepness_lambda,
+                    final_steepness_lambda,
                     iteration_count,
                     activations,
                     poses,
@@ -458,7 +448,7 @@ class MatrixCapsNet:
     def build_parent_assembly_layer(self,
                                     child_activations,
                                     potential_parent_pose_vectors,  # [batch, child, parent, pose_vector]
-                                    steepness_lambda,
+                                    final_steepness_lambda,
                                     iteration_count, # em routing
                                     routing_state):
 
@@ -480,6 +470,7 @@ class MatrixCapsNet:
 
             with tf.name_scope('expectation_maximization') as scope1:
                 for i in range(iteration_count + 1):
+                    steepness_lambda = final_steepness_lambda * (1.0 - tf.pow(0.95, tf.cast(i + 1, tf.float32)))
                     parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance =\
                         self.estimate_parents_layer(
                             child_parent_assignment_weights,
@@ -666,7 +657,7 @@ class MatrixCapsNet:
     def build_matrix_caps(
             self,
             parent_count,
-            steepness_lambda,
+            final_steepness_lambda,
             iteration_count,
             child_activation_vector,
             child_pose_layer,
@@ -695,7 +686,7 @@ class MatrixCapsNet:
             parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
                 child_activation_vector,
                 potential_parent_pose_vectors,
-                steepness_lambda,
+                final_steepness_lambda,
                 iteration_count,
                 routing_state
             )

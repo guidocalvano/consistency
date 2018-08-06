@@ -5,6 +5,7 @@ import numpy as np
 import config
 import os
 import shutil
+import sys
 
 
 class TestMatrixCapsNetEstimator(tf.test.TestCase):
@@ -190,6 +191,125 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
     #         sess.run([training_specs.train_op])
     #
     #     pass
+
+    def test_spread_loss_margin(self):
+        sess = tf.Session()
+
+        example_counter = tf.placeholder(dtype=tf.float32)
+
+        spread_margin = MatrixCapsNetEstimator.spread_loss_margin(example_counter)
+
+        one_step_original_margin = 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, 1.0 / 50000.0 - 4.0))
+        three_step_original_margin = 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, 3.0 / 50000.0 - 4.0))
+        three_and_half_step_original_margin = 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, 3.5 / 50000.0 - 4.0))
+
+
+        with sess.as_default():
+
+            actual, expected = sess.run([spread_margin, one_step_original_margin], {example_counter: 64})
+
+            self.assertTrue(actual == expected, "margin should be the same for both paper and this implementation for one step in the paper")
+
+            actual, expected = sess.run([spread_margin, three_step_original_margin], {example_counter: 3 * 64})
+
+            self.assertTrue(actual == expected, "margin should be the same for both paper and this implementation for three steps in the paper")
+
+            actual, expected = sess.run([spread_margin, three_and_half_step_original_margin], {example_counter: int(3.5 * 64)})
+
+            self.assertTrue(actual == expected, "margin should be the same for both paper and this implementation for 3.5 steps in the paper")
+
+    def test_spread_loss(self):
+        sess = tf.Session()
+
+        m = tf.placeholder(shape=[], dtype=tf.float32)
+        correct = tf.placeholder(shape=[None, 2], dtype=tf.float32)
+        predicted = tf.placeholder(shape=[None, 2], dtype=tf.float32)
+
+        spread_loss = MatrixCapsNetEstimator.spread_loss(correct, predicted, m)
+
+        correct_np = np.array([
+            [0.0, 1.0]
+        ])
+
+        correct_but_low_margin_np = np.array([
+            [.3, .5]
+        ])
+
+        correct_high_margin_np = np.array([
+            [.2, .7]
+        ])
+
+        wrong_output_np = np.array([
+            [.5, .3]
+        ])
+
+        with sess.as_default():
+            no_loss = sess.run(spread_loss, {
+                correct: correct_np,
+                predicted: correct_np,
+                m: .4
+            })
+
+            self.assertTrue(no_loss == 0.0, 'perfectly correct output should not incur any loss')
+
+            low_margin_output_no_loss = sess.run(spread_loss, {
+                correct: correct_np,
+                predicted: correct_but_low_margin_np,
+                m: .2
+            })
+            self.assertTrue(abs(low_margin_output_no_loss) < sys.float_info.epsilon * 100, 'low margin correct output should not incur any loss')
+
+            low_margin_output_loss = sess.run(spread_loss, {
+                correct: correct_np,
+                predicted: correct_but_low_margin_np,
+                m: .3
+            })
+
+            self.assertTrue(abs(low_margin_output_loss - 0.01) < .000001, 'high margin correct output should not incur any loss')
+
+
+            high_output_no_loss = sess.run(spread_loss, {
+                correct: correct_np,
+                predicted: correct_high_margin_np,
+                m: .4
+            })
+            self.assertTrue(abs(high_output_no_loss)  < sys.float_info.epsilon * 100, 'high margin correct output should not incur any loss')
+
+
+            wrong_output_loss = sess.run(spread_loss, {
+                correct: correct_np,
+                predicted: wrong_output_np,
+                m: .2
+            })
+            self.assertTrue(abs(wrong_output_loss - (.4 * .4)) < .00001, 'high margin correct output should not incur any loss')
+
+
+    def test_counter(self):
+
+        sess = tf.Session()
+
+        zero_counter = MatrixCapsNetEstimator.counter(tf.constant(0.0), tf.constant(True))
+        increase_one_counter = MatrixCapsNetEstimator.counter(tf.constant(1.0), tf.constant(True))
+
+        with sess.as_default():
+
+            sess.run(tf.global_variables_initializer())
+
+            v = sess.run(zero_counter)
+
+            self.assertTrue(v == 0.0, "counter should be zero")
+
+            v = sess.run(increase_one_counter)
+
+            self.assertTrue(v == 1.0, "counter should be one")
+
+            v = sess.run(increase_one_counter)
+
+            self.assertTrue(v == 2.0, "counter should be two")
+
+            v = sess.run([increase_one_counter, increase_one_counter])[1]
+
+            self.assertTrue(v == 3.0, "counter should be three")
 
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):
         self.assertTrue(np.isfinite(tensor_array).all(), message + ": does not have finite data")

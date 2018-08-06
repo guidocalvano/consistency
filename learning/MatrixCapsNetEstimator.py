@@ -41,17 +41,31 @@ class MatrixCapsNetEstimator:
         self.architecture = architecture
         return self
 
+    @staticmethod
+    def counter(next_number, is_training):
+        number_counter = tf.Variable(tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
+
+        return tf.cond(is_training,
+                lambda: number_counter.assign(number_counter + next_number, use_locking=True),
+                lambda: number_counter)
+
+
+    @staticmethod
+    def spread_loss_margin(processed_example_counter):
+        return 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, (processed_example_counter / 64.0) / 50000.0 - 4.0))
+
     def model_function(self, examples, labels, mode, params):
 
         total_example_count = params["total_example_count"]
         iteration_count = params["iteration_count"]
         label_count = params["label_count"]
+        batch_size = tf.cast(tf.gather(tf.shape(examples), 0), tf.float32)
 
         is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
         routing_state = None
 
-        network_output, spread_loss_margin, reset_routing_configuration_op = \
-            getattr(MatrixCapsNet(), self.architecture)(examples, total_example_count, iteration_count, routing_state, is_training)
+        network_output, reset_routing_configuration_op = \
+            getattr(MatrixCapsNet(), self.architecture)(examples, iteration_count, routing_state)
 
         (activations, poses) = network_output
 
@@ -64,6 +78,10 @@ class MatrixCapsNetEstimator:
                 'poses': poses
             }
             return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+
+        processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
+
+        spread_loss_margin = MatrixCapsNetEstimator.spread_loss_margin(processed_example_counter)
 
         loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
             "margin": spread_loss_margin})
