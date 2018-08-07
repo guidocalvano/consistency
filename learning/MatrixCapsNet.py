@@ -728,6 +728,39 @@ class MatrixCapsNet:
 
         return value
 
+    def generate_2D_convolution_indices(self, shape, kernel_size, stride):
+
+        # generate indices for kernel at initial offset
+
+        kernel_x = np.repeat(np.arange(kernel_size), kernel_size).reshape([1, 1, -1, 1])
+        kernel_y = np.tile(np.arange(kernel_size), kernel_size).reshape([1, 1, -1, 1])
+
+        # for each patch generate translations of kernel
+
+        patch_row_ids    = np.arange(0, shape[0] - kernel_size + 1, stride).reshape([-1, 1, 1, 1])
+        patch_column_ids = np.arange(0, shape[1] - kernel_size + 1, stride).reshape([1, -1, 1, 1])
+
+        patch_row_translation = np.tile(patch_row_ids, [1, patch_column_ids.shape[1], 1, 1])
+        patch_column_translation = np.tile(patch_column_ids, [patch_row_ids.shape[0], 1, 1, 1])
+
+        # for each translation create a kernel translation
+        patch_row_x_kernel = patch_row_translation + kernel_x
+        patch_column_y_kernel = patch_column_translation + kernel_y
+
+        patch_to_kernel_index = np.concatenate([patch_row_x_kernel, patch_column_y_kernel], axis=3)
+
+        return patch_to_kernel_index
+
+    def reverse_2D_convolution_indices(self, indices, parent_shape):
+
+        reverse_indices = np.zeros(np.concatenate([indices.shape[[0, 1]], parent_shape])).astype('bool')
+
+        for x in range(indices.shape[0]):
+            for y in range(indices.shape[1]):
+                reverse_indices[x, y][indices[:, 0], indices[:, 1]] = True
+
+        return reverse_indices
+
 # get tensor's shape at graph construction time and standardizes it into a numpy array, such that reshape and all the
 # other tensor flow functions can work with it
 def numpy_shape_ct(tensor):
