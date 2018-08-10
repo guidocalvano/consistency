@@ -498,13 +498,15 @@ class MatrixCapsNet:
 
         return output_parent_activations, output_parent_poses
 
-
+    #@TODO alter code to group children by parent
     def estimate_parents_layer(self, # m step
+                               #@TODO change this argument to active_child_parent_assignment_weights
                                child_parent_assignment_weights,  # [batch, child, parent, 1]
+                               # @TODO move this argument and the only line it acts on out of function
                                child_activations,  # [batch, child, 1, 1]
                                potential_parent_pose_vectors,  # [batch, child, parent, pose_vector]
-                               beta_u,  # [1, 1, parent, 1] @TODO double check correct dimensions!
-                               beta_a,  # [1, 1, parent, 1] @TODO double check correct dimensions!
+                               beta_u,  # [1, 1, parent, 1]
+                               beta_a,  # [1, 1, parent, 1]
                                steepness_lambda  # scalar
                                ):
 
@@ -522,7 +524,7 @@ class MatrixCapsNet:
             pose_element_axis = 3  # @TODO: double check if this is the correct axis
             # select child parent assignments based on child activity
             # [batch, child, parent, 1]
-            #@TODO: check if broadcasting works correctly
+            #@TODO: move these two lines out of this function and into the calling function
             active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
             active_child_parent_assignment_weights = tf.identity(active_child_parent_assignment_weights, name='active_child_parent_assignment_weights')
 
@@ -586,19 +588,20 @@ class MatrixCapsNet:
 
         return parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance
 
+    #@TODO Test if expanding code to work only on the childrens' parents works
     def estimate_children_layer(self,  # e step
-                                parent_activations,  # [batch, 1, parent, 1]
-                                likely_parent_pose,  # [batch, 1, parent, likely_pose_element]
-                                likely_parent_pose_variance,  # [batch, 1, parent, likely_pose_element_variance]
-                                potential_parent_pose_vectors):  # [batch, child, parent, pose_element]
+                                childs_parent_activations,  # [batch, child, parents_of_child, 1]
+                                childs_likely_parent_pose,  # [batch, child, parents_of_child, likely_pose_element]
+                                childs_likely_parent_pose_variance,  # [batch, child, parents_of_child, likely_pose_element_variance]
+                                childs_potential_parent_pose_vectors):  # [batch, child, parents_of_child, pose_element]
 
         with tf.name_scope('estimate_children_layer') as scope:
 
-            [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
+            [batch_count, child_count, childs_parent_count, pose_element_count] = numpy_shape_ct(childs_potential_parent_pose_vectors)
 
-            assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
-            assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
-            assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(childs_parent_activations)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(childs_likely_parent_pose)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(childs_likely_parent_pose_variance)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
 
             batch_axis = 0
             child_axis = 1
@@ -610,43 +613,43 @@ class MatrixCapsNet:
             #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
             # )
 
-            divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
+            divisor = tf.sqrt(tf.reduce_prod(childs_likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
             divisor = tf.identity(divisor, name='divisor')
             # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
 
             # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
             # [batch, child, parent, pose_element] @TODO is likely_parent_pose  broadcasted correctly
-            potential_parent_pose_variance = tf.square(potential_parent_pose_vectors - likely_parent_pose)
-            potential_parent_pose_variance = tf.identity(potential_parent_pose_variance, name='potential_parent_pose_variance')
+            childs_potential_parent_pose_variance = tf.square(childs_potential_parent_pose_vectors - childs_likely_parent_pose)
+            childs_potential_parent_pose_variance = tf.identity(childs_potential_parent_pose_variance, name='potential_parent_pose_variance')
 
-            assert (numpy_shape_ct(potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(childs_potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
 
             # [batch, child, parent, 1]
             power = -tf.reduce_sum(
-                potential_parent_pose_variance /
-                (likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
+                childs_potential_parent_pose_variance /
+                (childs_likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
 
             power = tf.identity(power, name='power')
 
-            assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
 
             # [batch, child, parent, 1]
             # parent_probability_per_child = factor * tf.exp(power)
             # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-            parent_probability_per_child = tf.exp(power) / divisor
-            parent_probability_per_child = tf.identity(parent_probability_per_child, name='parent_probability_per_child')
+            childs_parent_probability = tf.exp(power) / divisor
+            childs_parent_probability = tf.identity(childs_parent_probability, name='childs_parent_probability')
 
             # [batch, child, parent, 1]
-            active_parent_probability_per_child = parent_probability_per_child * parent_activations
-            active_parent_probability_per_child = tf.identity(active_parent_probability_per_child, name='active_parent_probability_per_child')
+            childs_active_parent_probability = childs_parent_probability * childs_parent_activations
+            childs_active_parent_probability = tf.identity(childs_active_parent_probability, name='childs_active_parent_probability')
 
-            assert (numpy_shape_ct(active_parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(childs_active_parent_probability)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
 
             # [batch, child, parent, 1]
-            child_parent_assignment_weights = active_parent_probability_per_child \
-                / (tf.reduce_sum(active_parent_probability_per_child, axis=parent_axis, keepdims=True) + sys.float_info.epsilon)
+            child_parent_assignment_weights = childs_active_parent_probability \
+                / (tf.reduce_sum(childs_active_parent_probability, axis=parent_axis, keepdims=True) + sys.float_info.epsilon)
 
             child_parent_assignment_weights = tf.identity(child_parent_assignment_weights, name='child_parent_assignment_weights')
 
