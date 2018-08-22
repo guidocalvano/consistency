@@ -762,7 +762,8 @@ class MatrixCapsNet:
 
         def __init__(self):
             self.input_to_parent_kernel_indices = np.array([])
-            self.output_to_child_kernel_indices = np.array([])
+
+            self.is_input_dimension = []  # python LIST, True (1) for 1nput en False (0) for 0utput
 
             self.weight_shape = []  # must be python LIST and definitely NOT numpy array. We want + for concatenation.
 
@@ -782,6 +783,8 @@ class MatrixCapsNet:
 
             self.input_tiling += [1, 1, 1, 1]
 
+            self.is_input_dimension += [True, True, False, False]
+
         def append_semantic_convolution(self, semantic_shape, kernel_size, stride):
 
             kernel_patch_indices = self.create_spatial_convolution(semantic_shape, kernel_size, stride, make_toroid=True)
@@ -794,6 +797,8 @@ class MatrixCapsNet:
 
             self.input_tiling += [1, 1, 1, 1]
 
+            self.is_input_dimension += [True, True, False, False]
+
         def append_fully_connected(self, input_features, output_features):
 
             #@TODO implement how input is tiled as a consequence, and how
@@ -803,6 +808,9 @@ class MatrixCapsNet:
             self.weight_tiling += [1, 1]
 
             self.input_tiling += [1, output_features]  # input features are taken directly from the input
+
+            self.is_input_dimension += [True, False]
+
 
         def create_spatial_convolution(self, children_shape, kernel_size, stride, make_toroid=False):
 
@@ -872,7 +880,7 @@ class MatrixCapsNet:
                 kernel_patch_indices[:, :, :, :, 1] = kernel_patch_indices[:, :, :, :, 0] % child_column_count
 
             return kernel_patch_indices
-        
+
 
         def expand_by_convolution(self, kernel_patch_indices):
             new_patch_address_dimensions = len(kernel_patch_indices.shape) - 1
@@ -904,13 +912,49 @@ class MatrixCapsNet:
 
             self.input_to_parent_kernel_indices = concatentated_convolution
 
-        def _reverse(self):
+        def _invert_input_to_parent_kernel_indices(self, input_shape):
+            #@TODO remove numpy zeros dense array and just create tf.SparseTensor directly
+            parent_kernel_to_input = np.zeros(self.input_to_parent_kernel_indices.shape + input_shape)
+
+            parent_kernel_index_list = np.indices(self.input_to_parent_kernel_indices.shape).reshape([2, -1]).transpose()
+
+            connection_index_list = np.concatenate([parent_kernel_index_list, self.input_to_parent_kernel_indices[parent_kernel_index_list.transpose()]])
+
+            parent_kernel_to_input[connection_index_list.transpose()] = 1
+
+            return parent_kernel_to_input
+
+
+
+        # def _gather_nd_ignore_batch(self, input_layer, indices):
+        #     dimension_count = len(input_layer.get_shape())
+        #
+        #     input_payload_dimensions = range(1, dimension_count)
+        #     input_batch_dimension = [0]
+        #     to_gather_transpose_ = input_payload_dimensions + input_batch_dimension
+        #
+        #     input_layer_transposed_
+        #
+        #     tf.gather_nd()
+
+        def project_input_to_kernels(self, input_layer):
+
             pass
 
-        def child_map_to_kernel_of_parent_indices(self, children_shape):
+        def reduce_sum_kernels_to_input(self, kernels_to_parent):
             pass
 
-        def parent_map_to_kernel_of_child_indices(self, ):
+        def flatten_kernel_parent_map(self, kernel_to_parent):
+            pass
+
+        def unflatten_kernel_parent_map(self, flattened_kernel_to_parent):
+            pass
+
+        def project_sum_per_child_from_kernel_map_to_kernel_map(self, kernel_to_parent):
+            input_sum = self.reduce_sum_kernels_to_input(kernel_to_parent)
+            child_sum_in_kernel_to_parent = self.project_input_to_kernels(input_sum)
+            return child_sum_in_kernel_to_parent
+
 
     class Convolution:
         def __init__(self, shape, kernel, stride):
