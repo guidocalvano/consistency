@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 import math
 import sys
+from learning.TopologyBuilder import TopologyBuilder
+
 
 class MatrixCapsNet:
     '''
@@ -46,31 +48,37 @@ class MatrixCapsNet:
             # number of capsules is defined by number of texture patches
             primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
-            conv_caps_layer_C = self.build_convolutional_capsule_layer(
+            c_topology = TopologyBuilder().init()
+            c_topology.add_spatial_convolution(primary_capsule_layer_B.get_shape()[[1, 2]], 3, 2)
+            c_topology.add_dense_connection(primary_capsule_layer_B.get_shape()[3], capsule_count_C)
+
+            conv_caps_layer_C = self.build_matrix_caps(
                 primary_capsule_layer_B,
-                3,
-                2,
-                capsule_count_C,
+                c_topology,
                 final_steepness_lambda,
                 iteration_count,
                 routing_state
             )
 
-            conv_caps_layer_D = self.build_convolutional_capsule_layer(
+            d_topology = TopologyBuilder().init()
+            d_topology.add_spatial_convolution(conv_caps_layer_C.get_shape()[[1, 2]], 3, 1)
+            d_topology.add_dense_connection(conv_caps_layer_C.get_shape()[3], capsule_count_D)
+
+
+            conv_caps_layer_D = self.build_matrix_caps(
                 conv_caps_layer_C,
-                3,
-                1,
-                capsule_count_D,
+                d_topology,
                 final_steepness_lambda,
                 iteration_count,
                 routing_state
             )
 
-            use_coordinate_addition = True
-            aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+            aggregating_topology = TopologyBuilder().init()
+            aggregating_topology.add_aggregation(conv_caps_layer_C.get_shape()[1], conv_caps_layer_C.get_shape()[2], 5, [[3, 0], [3, 1]])
+
+            aggregating_capsule_layer = self.build_matrix_caps(
                 conv_caps_layer_D,
-                use_coordinate_addition,
-                capsule_count_E,
+                aggregating_topology,
                 final_steepness_lambda,
                 iteration_count,
                 routing_state
@@ -121,7 +129,6 @@ class MatrixCapsNet:
 
         return aggregating_capsule_layer, next_routing_state
 
-
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,
                                         use_coordinate_addition,
@@ -134,12 +141,13 @@ class MatrixCapsNet:
 
             input_activations = input_layer_list[0]
             input_poses = input_layer_list[1]
+            [batch_size, width, height, capsule_count, parent_broadcast_dim, activation_dim] = numpy_shape_ct(
+                input_activations)
 
             normal_layer_coordinate_addition = None
             if use_coordinate_addition:
                 with tf.name_scope('coordinate_addition') as scope1:
 
-                    [batch_size, width, height, capsule_count, parent_broadcast_dim, activation_dim] = numpy_shape_ct(input_activations)
 
                     width_addition = tf.constant((np.arange(width) / width).astype('float32'), shape=[1, width, 1, 1, 1, 1])
                     height_addition = tf.constant((np.arange(height) / height).astype('float32'), shape=[1, 1, height, 1, 1, 1])
@@ -157,12 +165,20 @@ class MatrixCapsNet:
             normal_input_activations = self.build_cast_conv_to_normal_layer(input_activations)
             normal_input_poses = self.build_cast_conv_to_normal_layer(input_poses)
 
+            unaggregated_child_count = tf.shape(normal_input_activations)[1]
+
+            aggregation_topology = TopologyBuilder().init()
+
+            aggregation_topology.add_spatial_convolution([width, height], 1, 1)
+            aggregation_topology.flatten_to_features
+
+            aggregation_topology.add_dense_connection(unaggregated_child_count, parent_count)
+
             aggregated_capsule_layer = self.build_matrix_caps(
-                parent_count,
+                [normal_input_activations, normal_input_poses],
+                aggregation_topology,
                 final_steepness_lambda,
                 iteration_count,
-                normal_input_activations,
-                normal_input_poses,
                 routing_state,
                 normal_layer_coordinate_addition
             )
@@ -456,7 +472,8 @@ class MatrixCapsNet:
                                     children_per_potential_parent_pose_vectors,  # [batch, child, parent, pose_vector]
                                     final_steepness_lambda,
                                     iteration_count, # em routing
-                                    routing_state):
+                                    routing_state,
+                                    topology):
 
         with tf.name_scope('parent_assembly_layer') as scope0:
 
@@ -502,7 +519,8 @@ class MatrixCapsNet:
                         parent_activations,
                         likely_parent_pose,
                         likely_parent_pose_variance,
-                        childs_potential_parent_pose_vectors #@TODO limit to only parents of children
+                        childs_potential_parent_pose_vectors, #@TODO limit to only parents of children
+                        topology
                     )
                     #@TODO invert child parent assignment weights to contain children of parents
                     # rather than parents of children
@@ -514,19 +532,20 @@ class MatrixCapsNet:
 
         return output_parent_activations, output_parent_poses
 
-    #@TODO alter code to group children by parent
     def estimate_parents_layer(self, # m step
-                               active_child_parent_assignment_weights,  # [batch, children_per_parent, parent, 1]
-                               children_per_potential_parent_pose_vectors,  # [batch, children_per_parent, parent, pose_vector]
-                               beta_u,  # [1, 1, parent, 1]
-                               beta_a,  # [1, 1, parent, 1]
+                               child_parent_assignment_weights,  # [batch, child, parent, 1]
+                               child_activations,  # [batch, child, 1, 1]
+                               potential_parent_pose_vectors,  # [batch, child, parent, pose_vector]
+                               beta_u,  # [1, 1, parent, 1] @TODO double check correct dimensions!
+                               beta_a,  # [1, 1, parent, 1] @TODO double check correct dimensions!
                                steepness_lambda  # scalar
                                ):
 
         with tf.name_scope('estimate_parents_layer') as scope:
-            [batch_count, parents_children_count, parent_count, pose_element_count] = numpy_shape_ct(children_per_potential_parent_pose_vectors)
+            [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
 
-            assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, parents_children_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(child_activations) == np.array([batch_count, child_count, 1, 1])).all()
             assert (numpy_shape_ct(beta_u) == np.array([1, 1, parent_count, 1])).all()
             assert (numpy_shape_ct(beta_a) == np.array([1, 1, parent_count, 1])).all()
 
@@ -534,8 +553,13 @@ class MatrixCapsNet:
             child_axis = 1
             parent_axis = 2
             pose_element_axis = 3  # @TODO: double check if this is the correct axis
+            # select child parent assignments based on child activity
+            # [batch, child, parent, 1]
+            #@TODO: check if broadcasting works correctly
+            active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
+            active_child_parent_assignment_weights = tf.identity(active_child_parent_assignment_weights, name='active_child_parent_assignment_weights')
 
-            assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, parents_children_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
             # [batch, 1, parent, 1]
             total_active_child_parent_assignment_per_parent = tf.reduce_sum(active_child_parent_assignment_weights,
@@ -548,14 +572,14 @@ class MatrixCapsNet:
             # [batch, child, parent, 1]
             child_proportion_of_parent = active_child_parent_assignment_weights \
                                          / (total_active_child_parent_assignment_per_parent + sys.float_info.epsilon)
-            assert (numpy_shape_ct(child_proportion_of_parent)[1:] == np.array([batch_count, parents_children_count, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(child_proportion_of_parent)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
             # Assemble the most probable parent pose
-            # by summing the children_per_potential_parent_pose_vectors weighted by proportional contributions of the children;
+            # by summing the potential_parent_pose_vectors weighted by proportional contributions of the children;
             # This is the mu of the parent in the paper
             # [batch, 1, parent, likely_pose_element]
             likely_parent_pose = tf.reduce_sum(
-                children_per_potential_parent_pose_vectors * child_proportion_of_parent,
+                potential_parent_pose_vectors * child_proportion_of_parent,
                 axis=child_axis, keepdims=True, name='likely_parent_pose'
             )
             assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
@@ -564,7 +588,7 @@ class MatrixCapsNet:
             # this is the sigma of the parent in the paper
             # [batch, 1, parent, likely_pose_element_variance]
             likely_parent_pose_variance = tf.reduce_sum(
-                tf.square(children_per_potential_parent_pose_vectors - likely_parent_pose) * child_proportion_of_parent,
+                tf.square(potential_parent_pose_vectors - likely_parent_pose) * child_proportion_of_parent,
                 axis=child_axis, keepdims=True, name='likely_parent_pose_variance'
             )  + sys.float_info.epsilon
             assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
@@ -595,20 +619,20 @@ class MatrixCapsNet:
 
         return parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance
 
-    #@TODO Test if expanding code to work only on the childrens' parents works
     def estimate_children_layer(self,  # e step
-                                childs_parent_activations,  # [batch, child, parents_of_child, 1]
-                                childs_likely_parent_pose,  # [batch, child, parents_of_child, likely_pose_element]
-                                childs_likely_parent_pose_variance,  # [batch, child, parents_of_child, likely_pose_element_variance]
-                                childs_potential_parent_pose_vectors):  # [batch, child, parents_of_child, pose_element]
+                                parent_activations,  # [batch, 1, parent, 1]
+                                likely_parent_pose,  # [batch, 1, parent, likely_pose_element]
+                                likely_parent_pose_variance,  # [batch, 1, parent, likely_pose_element_variance]
+                                potential_parent_pose_vectors, # [batch, child, parent, pose_element]
+                                topology):
 
         with tf.name_scope('estimate_children_layer') as scope:
 
-            [batch_count, child_count, childs_parent_count, pose_element_count] = numpy_shape_ct(childs_potential_parent_pose_vectors)
+            [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
 
-            assert (numpy_shape_ct(childs_parent_activations)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
-            assert (numpy_shape_ct(childs_likely_parent_pose)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
-            assert (numpy_shape_ct(childs_likely_parent_pose_variance)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(parent_activations)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(likely_parent_pose)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
             batch_axis = 0
             child_axis = 1
@@ -620,43 +644,43 @@ class MatrixCapsNet:
             #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
             # )
 
-            divisor = tf.sqrt(tf.reduce_prod(childs_likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
+            divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
             divisor = tf.identity(divisor, name='divisor')
             # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
 
             # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
 
             # [batch, child, parent, pose_element] @TODO is likely_parent_pose  broadcasted correctly
-            childs_potential_parent_pose_variance = tf.square(childs_potential_parent_pose_vectors - childs_likely_parent_pose)
-            childs_potential_parent_pose_variance = tf.identity(childs_potential_parent_pose_variance, name='potential_parent_pose_variance')
+            potential_parent_pose_variance = tf.square(potential_parent_pose_vectors - likely_parent_pose)
+            potential_parent_pose_variance = tf.identity(potential_parent_pose_variance, name='potential_parent_pose_variance')
 
-            assert (numpy_shape_ct(childs_potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, childs_parent_count, pose_element_count])[1:]).all()
+            assert (numpy_shape_ct(potential_parent_pose_variance)[1:] == np.array([batch_count, child_count, parent_count, pose_element_count])[1:]).all()
 
             # [batch, child, parent, 1]
             power = -tf.reduce_sum(
-                childs_potential_parent_pose_variance /
-                (childs_likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
+                potential_parent_pose_variance /
+                (likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
 
             power = tf.identity(power, name='power')
 
-            assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(power)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
             # [batch, child, parent, 1]
             # parent_probability_per_child = factor * tf.exp(power)
             # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-            childs_parent_probability = tf.exp(power) / divisor
-            childs_parent_probability = tf.identity(childs_parent_probability, name='childs_parent_probability')
+            parent_probability_per_child = tf.exp(power) / divisor
+            parent_probability_per_child = tf.identity(parent_probability_per_child, name='parent_probability_per_child')
 
             # [batch, child, parent, 1]
-            childs_active_parent_probability = childs_parent_probability * childs_parent_activations
-            childs_active_parent_probability = tf.identity(childs_active_parent_probability, name='childs_active_parent_probability')
+            active_parent_probability_per_child = parent_probability_per_child * parent_activations
+            active_parent_probability_per_child = tf.identity(active_parent_probability_per_child, name='active_parent_probability_per_child')
 
-            assert (numpy_shape_ct(childs_active_parent_probability)[1:] == np.array([batch_count, child_count, childs_parent_count, 1])[1:]).all()
+            assert (numpy_shape_ct(active_parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
             # [batch, child, parent, 1]
-            child_parent_assignment_weights = childs_active_parent_probability \
-                / (tf.reduce_sum(childs_active_parent_probability, axis=parent_axis, keepdims=True) + sys.float_info.epsilon)
+            child_parent_assignment_weights = active_parent_probability_per_child \
+                / (topology.replace_kernel_elements_with_sum_of_child(active_parent_probability_per_child) + sys.float_info.epsilon)
 
             child_parent_assignment_weights = tf.identity(child_parent_assignment_weights, name='child_parent_assignment_weights')
 
@@ -666,19 +690,17 @@ class MatrixCapsNet:
 
     def build_matrix_caps(
             self,
-            parent_count,
+            input_layer,
+            topology,
             final_steepness_lambda,
             iteration_count,
-            child_activation_vector,
-            child_pose_layer,
             routing_state,
-            topology,
-            reverse_topology,
             convolution_coordinates=None):
 
         with tf.name_scope('matrix_capsule_layer') as scope:
+            child_activation_vector, child_pose_layer = topology.children_to_linear(input_layer)
 
-            potential_parent_poses = self.build_children_of_potential_parent_pose_layer(child_pose_layer, parent_count, topology)
+            potential_parent_poses = topology.linearized_potential_parent_poses(input_layer)
 
             [batch_size, child_count, _, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
 
@@ -701,18 +723,16 @@ class MatrixCapsNet:
                 final_steepness_lambda,
                 iteration_count,
                 routing_state,
-                topology,
-                reverse_topology
+                topology
             )
 
-            new_child_count = parent_count
-            new_parent_broadcast_dim = 1
+            linear_parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, -1, 1, 1])
+            linear_parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors, shape=[batch_size, -1, 1, pose_matrix_width, pose_matrix_height])
 
-            parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, new_child_count, new_parent_broadcast_dim, 1])
-            parent_pose_vectors_without_coordinate_addition = parent_pose_vectors[:, :, :, :16]
-            parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors_without_coordinate_addition, shape=[batch_size, new_child_count, new_parent_broadcast_dim, pose_matrix_width, pose_matrix_height])
+            mapped_parent_as_child_activations = topology.reshape_parents_to_map(linear_parent_as_child_activations)
+            mapped_parent_as_child_pose_matrices = topology.reshape_parents_to_map(linear_parent_as_child_pose_matrices)
 
-        return parent_as_child_activations, parent_as_child_pose_matrices
+        return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
         example_counter = tf.Variable(tf.constant(float(0)), trainable=False, dtype=tf.float32)
