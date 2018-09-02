@@ -74,7 +74,8 @@ class MatrixCapsNet:
             )
 
             aggregating_topology = TopologyBuilder().init()
-            aggregating_topology.add_aggregation(conv_caps_layer_C.get_shape()[1], conv_caps_layer_C.get_shape()[2], 5, [[3, 0], [3, 1]])
+            aggregating_topology.add_aggregation(conv_caps_layer_C.get_shape()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(conv_caps_layer_C.get_shape()[2], 5)
 
             aggregating_capsule_layer = self.build_matrix_caps(
                 conv_caps_layer_D,
