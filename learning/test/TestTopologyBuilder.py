@@ -854,4 +854,106 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.assertTrue(np.sum(self.topology.child_parent_kernel_mapping[:, 2] == 2) == input_count, "parent is connected to input_count inputs" )
 
 
+    def test_dense_input_mapping_pose_to_kernel_projection(self):
+        # name numbers for legibility
+        input_count, output_count = 4, 3
+        batch_size = 2
+        pose_row_count, pose_column_count = 4, 4
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish()
+
+        # test if input is mapped to kernel parent space correctly
+        input_template = np.zeros([batch_size, input_count, pose_row_count, pose_column_count])
+
+        input_values = np.arange(input_count).reshape([1, input_count, 1, 1])
+        batch_values = np.arange(batch_size).reshape([batch_size, 1, 1, 1]) * 10
+
+        input_layer_traceable_values = input_template + input_values + batch_values
+        # [batch, row, column, m, m]
+        input_layer = tf.constant(input_layer_traceable_values.astype(np.float32))
+
+        mapped_input = self.topology.map_input_layer_to_parent_kernels(input_layer)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if input is mapped to parent kernel space correctly
+            # setup variables
+            full_input_map = mapped_input.eval()
+            i = full_input_map[:, :, :, 0, 0]
+            correct_first_kernel_values = np.arange(input_count)
+            actual_first_kernel_values = i[0, :, 0]
+
+            self.assertTrue(np.all(actual_first_kernel_values == correct_first_kernel_values),
+                            "first kernel must be mapped accurately")
+
+            correct_second_kernel_values = np.arange(input_count)
+            actual_second_kernel_values = i[0, :, 1]
+
+            self.assertTrue(np.all(actual_second_kernel_values == correct_second_kernel_values),
+                            "next row kernel must be mapped accurately")
+
+
+    def test_dense_child_summing_logic(self):
+        # name numbers for legibility
+        input_count, output_count = 4, 3
+        batch_size = 2
+        pose_row_count, pose_column_count = 4, 4
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish()
+
+        # test if input is mapped to kernel parent space correctly
+        input_template = np.zeros([batch_size, input_count, pose_row_count, pose_column_count])
+
+        input_values = np.arange(input_count).reshape([1, input_count, 1, 1])
+        batch_values = np.arange(batch_size).reshape([batch_size, 1, 1, 1]) * 10
+
+        input_layer_traceable_values = input_template + input_values + batch_values
+        # [batch, row, column, m, m]
+        input_layer = tf.constant(input_layer_traceable_values.astype(np.float32))
+
+        mapped_input = self.topology.map_input_layer_to_parent_kernels(input_layer)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if input is mapped to parent kernel space correctly
+            # setup variables
+            full_input_map = mapped_input.eval()
+
+            m = self.topology.make_sparse_linearized_child_to_parent_kernel(self.topology.child_parent_kernel_mapping)
+
+            dense_linearized_child_to_parent_kernel = tf.sparse_to_dense(m.indices, m.dense_shape, m.values).eval()
+
+            self.assertTrue(np.sum(dense_linearized_child_to_parent_kernel) == self.topology.child_parent_kernel_mapping.shape[0])
+
+            # mock assuming weights are all identity matrices
+            linearized_kernel_parent_mock = self.topology._linearize_potential_parent_poses_map(tf.constant(full_input_map)).eval()[:, :, :, 0, 0]
+            mapped_kernel_parent_mock = full_input_map[:, :, :, 0, 0]
+
+            children_sum = self.topology._compute_sum_for_children(tf.constant(linearized_kernel_parent_mock)).eval()
+
+            mapped_children_sum = np.reshape(children_sum, input_template.shape[:2])
+
+            # a corner child is projected to only one parent
+            self.assertTrue(np.all(mapped_children_sum[:, 0] == np.sum(mapped_kernel_parent_mock[:, 0, :], axis=1)))
+            # with a stride of 2 the next value is projected to two parents
+            self.assertTrue(np.all(mapped_children_sum[:, 1] == np.sum(mapped_kernel_parent_mock[:, 1, :], axis=1)))
+            self.assertTrue(np.all(mapped_children_sum[:, -1] == np.sum(mapped_kernel_parent_mock[:, -1, :], axis=1)))
+
+            projected_children_sums = self.topology._project_child_scalars_to_parent_kernels(children_sum, tf.shape(tf.constant(linearized_kernel_parent_mock))).eval()
+
+            projected_children_sums_map = np.reshape(projected_children_sums, [batch_size, input_count, output_count])
+
+            self.assertTrue(np.all(projected_children_sums_map[0, 0, :] == mapped_children_sum[0, 0]))
+
+            self.assertTrue(np.all(projected_children_sums_map[1, 0, :] == mapped_children_sum[1, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[1, 1, :] == mapped_children_sum[1, 1]))
+
+
+            self.assertTrue(np.all(projected_children_sums_map[0, -1, :] == mapped_children_sum[0, -1]))
 
