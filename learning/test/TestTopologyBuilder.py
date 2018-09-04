@@ -586,8 +586,6 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.all(projected_children_sums_map[:, 1, 1, 6, 6] == mapped_children_sum[:, 13, 13]))
             self.assertTrue(np.all(projected_children_sums_map[:, 2, 2, 6, 6] == mapped_children_sum[:, 0, 0]))
 
-
-
     def test_aggregation_weight_construction(self):
         # name numbers for legibility
         [child_row_count, child_column_count] = [14, 14]
@@ -707,7 +705,6 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.all(actual_next_batch_kernel_values == correct_next_batch_kernel_values),
                             "next batch kernel must be mapped accurately")
 
-
     def test_aggregation_child_summing_logic(self):
         [child_row_count, child_column_count] = [14, 14]
 
@@ -789,8 +786,6 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.all(projected_children_sums_map[:, 2, 2, 0, 0] == mapped_children_sum[:, 2, 2]))
             self.assertTrue(np.all(projected_children_sums_map[:, 0, 2, 0, 0] == mapped_children_sum[:, 0, 2]))
             self.assertTrue(np.all(projected_children_sums_map[:, 2, 0, 0, 0] == mapped_children_sum[:, 2, 0]))
-
-
 
     def test_dense_weight_construction(self):
         # name numbers for legibility
@@ -895,7 +890,6 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.all(actual_second_kernel_values == correct_second_kernel_values),
                             "next row kernel must be mapped accurately")
 
-
     def test_dense_child_summing_logic(self):
         # name numbers for legibility
         input_count, output_count = 4, 3
@@ -957,3 +951,323 @@ class TestTopologyBuilder(tf.test.TestCase):
 
             self.assertTrue(np.all(projected_children_sums_map[0, -1, :] == mapped_children_sum[0, -1]))
 
+    def test_aggregation_with_dense_weight_construction(self):
+        [child_row_count, child_column_count, child_feature_count] = [14, 14, 5]
+
+        kernel_size = 14
+
+        [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, parent_row_count, parent_column_count, parent_feature_count, pose_row_count, pose_column_count] =\
+        [3,          kernel_size,      kernel_size,         child_feature_count,                 1,                   1,                   3,                    4,              4]
+
+        # setup tested topology
+        self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
+        self.topology.add_dense_connection(child_feature_count, parent_feature_count)
+
+        self.topology.finish()
+
+        # assert internal state is correct
+        self.assertTrue(self.topology.weight_shape == [1, 1, kernel_feature_count, 1, 1, parent_feature_count], "weights must have the correct shape")
+        self.assertTrue(self.topology.weight_tiling == [kernel_size, kernel_size, 1, 1, 1, 1], "weight tiling must be correct")
+
+        # test if weights are constructed correctly, and mapped to kernels correctly
+        tiled_weights = self.topology.map_weights_to_parent_kernels(batch_size, pose_row_count, pose_column_count)
+
+        tiled_weight_shape = [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, 1, 1, parent_feature_count, pose_row_count, pose_column_count]
+
+        self.assertTrue(tiled_weights.get_shape() == tiled_weight_shape, "weight matrix must have the correct shape")
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if weights are initialized and constructed correctly
+            w = tiled_weights.eval()
+            self.assertTrue(np.all(np.array(w.shape) == np.array(tiled_weight_shape)))
+            data_one_batch = w[0, :, :, :, :, :, :, :, :]
+            data_other_batch = w[1, :, :, :, :, :, :, :]
+
+            self.assertTrue(np.all(data_one_batch == data_other_batch), "weights must be tiled across batches")
+
+            data_one_parent_on_row = w[:, 0, 0, :, :, :, :, :, :]
+            data_other_parent_on_row = w[:, 1, 0, :, :, :, :, :, :]
+
+            self.assertTrue(np.all(data_one_parent_on_row == data_other_parent_on_row), "weights must be tiled across kernel row")
+
+            data_one_parent_on_column = w[:, 1, 0, :, :, :, :, :, :]
+            data_other_parent_on_column = w[:, 1, 1, :, :, :, :, :, :]
+
+            self.assertTrue(np.all(data_one_parent_on_column == data_other_parent_on_column),
+                            "weights must be tiled across kernel column")
+
+            data_one_parent_feature = w[:, :, :, 0, :, :, :, :, :]
+            data_other_parent_feature = w[:, :, :, 1, :, :, :, :, :]
+
+            self.assertTrue(np.sum(data_one_parent_feature == data_other_parent_feature) == 0,
+                            "weights must not be tiled across features")
+
+    def test_aggregation_with_dense_input_mapping_internal_state(self):
+        [child_row_count, child_column_count, child_feature_count] = [14, 14, 5]
+
+        kernel_size = 14
+
+        [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, parent_row_count, parent_column_count, parent_feature_count, pose_row_count, pose_column_count] =\
+        [3,          kernel_size,      kernel_size,         child_feature_count,                 1,                   1,                   3,                    4,              4]
+
+        # setup tested topology
+        self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
+        self.topology.add_dense_connection(child_feature_count, parent_feature_count)
+
+        self.topology.finish()
+
+        feature_connection_count = child_feature_count * parent_feature_count
+
+        # assert that each child has the correct number of parents; aggregations have only 1 parent by definition unless another convolution increases the number of parents
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[0, 1]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[1, 0]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[1, 1]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[2, 0]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[2, 2]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[2, 3]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[3, 3]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[5, 5]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[4, 4]]), axis=1)) == feature_connection_count)
+        self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[5, 4]]), axis=1)) == feature_connection_count)
+
+    def test_aggregation_with_dense_input_mapping_pose_to_kernel_projection(self):
+        [child_row_count, child_column_count, child_feature_count] = [14, 14, 5]
+
+        kernel_size = 14
+
+        [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, parent_row_count, parent_column_count, parent_feature_count, pose_row_count, pose_column_count] =\
+        [3,          kernel_size,      kernel_size,         child_feature_count,                 1,                   1,                   3,                    4,              4]
+
+        # setup tested topology
+        self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
+        self.topology.add_dense_connection(child_feature_count, parent_feature_count)
+
+        self.topology.finish()
+
+        feature_connection_count = child_feature_count * parent_feature_count
+
+        # test if input is mapped to kernel parent space correctly
+        input_template = np.zeros([batch_size, child_row_count, child_column_count, child_feature_count, pose_row_count, pose_column_count])
+
+        row_values = np.arange(child_row_count).reshape([1, child_row_count, 1, 1, 1, 1])
+        column_values = np.arange(child_column_count).reshape([1, 1, child_column_count, 1, 1, 1]) * 100
+        feature_values = np.arange(child_feature_count).reshape([1, 1, 1, child_feature_count, 1, 1]) * 100 * 100
+
+        batch_values = np.arange(batch_size).reshape([batch_size, 1, 1, 1, 1, 1]) * 100 * 100 * 100
+
+        input_layer_traceable_values = input_template + row_values + column_values + feature_values + batch_values
+        # [batch, row, column, m, m]
+        input_layer = tf.constant(input_layer_traceable_values.astype(np.float32))
+
+        mapped_input = self.topology.map_input_layer_to_parent_kernels(input_layer)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if input is mapped to parent kernel space correctly
+            # setup variables
+            full_input_map = mapped_input.eval()
+            i = full_input_map[:, :, :, :, :, :, :, 0, 0]
+            correct_first_kernel_values = input_layer_traceable_values[0, :, :, 0, 0, 0]
+            actual_first_kernel_values = i[0, :, :, 0, 0, 0, 0]
+
+            self.assertTrue(np.all(actual_first_kernel_values == correct_first_kernel_values),
+                            "first kernel must be mapped accurately")
+
+            correct_next_batch_kernel_values = input_layer_traceable_values[1, :, :, 0, 0, 0]
+            actual_next_batch_kernel_values = i[1, :, :, 0, 0, 0, 0]
+
+            self.assertTrue(np.all(actual_next_batch_kernel_values == correct_next_batch_kernel_values),
+                            "next batch kernel must be mapped accurately")
+
+            correct_feature_kernel_values = np.tile(np.reshape(input_layer_traceable_values[0, 0, 0, :, 0, 0], [child_feature_count, 1]), [1, parent_feature_count])
+            actual_feature_kernel_values = i[0, 0, 0, :, 0, 0, :]
+
+            self.assertTrue(np.all(actual_feature_kernel_values == correct_feature_kernel_values),
+                            "features must be mapped accurately")
+
+            correct_feature_kernel_values = np.tile(np.reshape(input_layer_traceable_values[0, 1, 0, :, 0, 0], [child_feature_count, 1]), [1, parent_feature_count])
+            actual_feature_kernel_values = i[0, 1, 0, :, 0, 0, :]
+
+            self.assertTrue(np.all(actual_feature_kernel_values == correct_feature_kernel_values),
+                            "features must be mapped accurately")
+
+
+    def test_aggregation_with_dense_child_summing_logic(self):
+        [child_row_count, child_column_count, child_feature_count] = [14, 14, 5]
+
+        kernel_size = 14
+
+        [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, parent_row_count, parent_column_count, parent_feature_count, pose_row_count, pose_column_count] =\
+        [3,          kernel_size,      kernel_size,         child_feature_count,                 1,                   1,                   3,                    4,              4]
+
+        # setup tested topology
+        self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
+        self.topology.add_dense_connection(child_feature_count, parent_feature_count)
+
+        self.topology.finish()
+
+        feature_connection_count = child_feature_count * parent_feature_count
+
+        # test if input is mapped to kernel parent space correctly
+        input_template = np.zeros([batch_size, child_row_count, child_column_count, child_feature_count, pose_row_count, pose_column_count])
+
+        row_values = np.arange(child_row_count).reshape([1, child_row_count, 1, 1, 1, 1])
+        column_values = np.arange(child_column_count).reshape([1, 1, child_column_count, 1, 1, 1]) * 100
+        feature_values = np.arange(child_feature_count).reshape([1, 1, 1, child_feature_count, 1, 1]) * 100 * 100
+
+        batch_values = np.arange(batch_size).reshape([batch_size, 1, 1, 1, 1, 1]) * 100 * 100 * 100
+
+        input_layer_traceable_values = input_template + row_values + column_values + feature_values + batch_values
+        # [batch, row, column, m, m]
+        input_layer = tf.constant(input_layer_traceable_values.astype(np.float32))
+
+        mapped_input = self.topology.map_input_layer_to_parent_kernels(input_layer)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if input is mapped to parent kernel space correctly
+            # setup variables
+            full_input_map = mapped_input.eval()
+
+            m = self.topology.make_sparse_linearized_child_to_parent_kernel(self.topology.child_parent_kernel_mapping)
+
+            dense_linearized_child_to_parent_kernel = tf.sparse_to_dense(m.indices, m.dense_shape, m.values).eval()
+
+            self.assertTrue(np.sum(dense_linearized_child_to_parent_kernel) == self.topology.child_parent_kernel_mapping.shape[0])
+
+            # mock assuming weights are all identity matrices
+            linearized_kernel_parent_mock = self.topology._linearize_potential_parent_poses_map(tf.constant(full_input_map)).eval()[:, :, :, 0, 0]
+            mapped_kernel_parent_mock = full_input_map[:, :, :, :, :, :, :, 0, 0]
+
+            children_sum = self.topology._compute_sum_for_children(tf.constant(linearized_kernel_parent_mock)).eval()
+
+            mapped_children_sum = np.reshape(children_sum, input_template.shape[:4])
+
+            self.assertTrue(np.all(mapped_children_sum[:, 0, 0, 0] == np.sum(mapped_kernel_parent_mock[:, 0, 0, 0, 0, 0, :], axis=1)))
+
+            self.assertTrue(np.all(mapped_children_sum[:, 1, 0, 1] == np.sum(mapped_kernel_parent_mock[:, 1, 0, 1, 0, 0, :], axis=1)))
+
+
+            projected_children_sums = self.topology._project_child_scalars_to_parent_kernels(children_sum, tf.shape(tf.constant(linearized_kernel_parent_mock))).eval()
+
+            projected_children_sums_map = np.reshape(projected_children_sums, [batch_size, kernel_row_count, kernel_column_count, kernel_feature_count, parent_row_count, parent_column_count, parent_feature_count])
+
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 0, 0, 0, 0] == mapped_children_sum[:, 0, 0, 0]))
+
+            self.assertTrue(np.all(projected_children_sums_map[:, 1, 0, 0, 0, 0, 0] == mapped_children_sum[:, 1, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 1, 0, 0, 0, 0] == mapped_children_sum[:, 0, 1, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 1, 0, 0, 0] == mapped_children_sum[:, 0, 0, 1]))
+
+            self.assertTrue(np.all(projected_children_sums_map[:, 1, 0, 0, 0, 0, 1] == mapped_children_sum[:, 1, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 1, 0, 0, 0, 1] == mapped_children_sum[:, 0, 1, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 1, 0, 0, 1] == mapped_children_sum[:, 0, 0, 1]))
+
+
+    def test_spatial_and_semantic_convolution_child_summing_logic(self):
+        [child_row_count, child_column_count, child_feature_row_count, child_feature_column_count] = [12, 12, 6, 6]
+
+        spatial_kernel_size = 3
+        semantic_kernel_size = 3
+        stride = 2
+
+        [batch_size, kernel_row_count, kernel_column_count, kernel_feature_row_count, kernel_feature_column_count, parent_row_count, parent_column_count, parent_feature_row_count, parent_feature_column_count, pose_row_count, pose_column_count] =\
+        [3,          spatial_kernel_size,      spatial_kernel_size, semantic_kernel_size, semantic_kernel_size,                   5,                   5,                        3,                           3,                4,              4]
+
+        # setup tested topology
+        self.topology.add_spatial_convolution([child_row_count, child_column_count], spatial_kernel_size, stride)
+        self.topology.add_semantic_convolution([child_feature_row_count, child_feature_column_count], semantic_kernel_size, stride)
+
+        self.topology.finish()
+
+        # test if input is mapped to kernel parent space correctly
+        input_template = np.zeros([batch_size, child_row_count, child_column_count, child_feature_row_count, child_feature_column_count, pose_row_count, pose_column_count])
+
+        row_values = np.arange(child_row_count).reshape([1, child_row_count, 1, 1, 1, 1, 1])
+        column_values = np.arange(child_column_count).reshape([1, 1, child_column_count, 1, 1, 1, 1]) * 100
+
+        feature_row_values = np.arange(child_feature_row_count).reshape([1, 1, 1, child_feature_row_count, 1, 1, 1]) * 100 * 100
+        feature_column_values = np.arange(child_feature_column_count).reshape([1, 1, 1, 1, child_feature_column_count, 1, 1]) * 100 * 100 * 100
+
+        batch_values = np.arange(batch_size).reshape([batch_size, 1, 1, 1, 1, 1, 1]) * 100 * 100 * 100 * 100
+
+        input_layer_traceable_values = input_template + row_values + column_values + feature_row_values + feature_column_values + batch_values
+        # [batch, row, column, m, m]
+        input_layer = tf.constant(input_layer_traceable_values.astype(np.float32))
+
+        mapped_input = self.topology.map_input_layer_to_parent_kernels(input_layer)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # test if input is mapped to parent kernel space correctly
+            # setup variables
+            full_input_map = mapped_input.eval()
+
+            m = self.topology.make_sparse_linearized_child_to_parent_kernel(self.topology.child_parent_kernel_mapping)
+
+            dense_linearized_child_to_parent_kernel = tf.sparse_to_dense(m.indices, m.dense_shape, m.values).eval()
+
+            self.assertTrue(np.sum(dense_linearized_child_to_parent_kernel) == self.topology.child_parent_kernel_mapping.shape[0])
+
+
+            # mock assuming weights are all identity matrices
+            linearized_kernel_parent_mock = self.topology._linearize_potential_parent_poses_map(tf.constant(full_input_map)).eval()[:, :, :, 0, 0]
+            mapped_kernel_parent_mock = full_input_map[:, :, :, :, :, :, :, :, :, 0, 0]
+
+            children_sum = self.topology._compute_sum_for_children(tf.constant(linearized_kernel_parent_mock)).eval()
+
+            mapped_children_sum = np.reshape(children_sum, input_template.shape[:5])
+
+            self.assertTrue(np.all(mapped_children_sum[:, 0, 0, 0, 0] ==
+                                   mapped_kernel_parent_mock[:, 0, 0, 2, 2, 0, 0, 2, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 2, 0, 0, 0, 2, 0] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 0, 2, 0, 0, 0, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 0, 0, 0, 0, 0, 0]))
+
+
+            self.assertTrue(np.all(mapped_children_sum[:, 2, 2, 0, 0] ==
+                                   mapped_kernel_parent_mock[:, 2, 0, 2, 2, 0, 1, 2, 2] +
+                                   mapped_kernel_parent_mock[:, 2, 0, 2, 0, 0, 1, 2, 0] +
+                                   mapped_kernel_parent_mock[:, 2, 0, 0, 2, 0, 1, 0, 2] +
+                                   mapped_kernel_parent_mock[:, 2, 0, 0, 0, 0, 1, 0, 0] +
+
+                                   mapped_kernel_parent_mock[:, 0, 2, 2, 2, 1, 0, 2, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 2, 2, 0, 1, 0, 2, 0] +
+                                   mapped_kernel_parent_mock[:, 0, 2, 0, 2, 1, 0, 0, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 2, 0, 0, 1, 0, 0, 0] +
+
+                                   mapped_kernel_parent_mock[:, 2, 2, 2, 2, 0, 0, 2, 2] +
+                                   mapped_kernel_parent_mock[:, 2, 2, 2, 0, 0, 0, 2, 0] +
+                                   mapped_kernel_parent_mock[:, 2, 2, 0, 2, 0, 0, 0, 2] +
+                                   mapped_kernel_parent_mock[:, 2, 2, 0, 0, 0, 0, 0, 0] +
+
+                                   mapped_kernel_parent_mock[:, 0, 0, 2, 2, 1, 1, 2, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 2, 0, 1, 1, 2, 0] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 0, 2, 1, 1, 0, 2] +
+                                   mapped_kernel_parent_mock[:, 0, 0, 0, 0, 1, 1, 0, 0]))
+
+            projected_children_sums = self.topology._project_child_scalars_to_parent_kernels(children_sum, tf.shape(tf.constant(linearized_kernel_parent_mock))).eval()
+
+            projected_children_sums_map = np.reshape(projected_children_sums, [batch_size,
+                                                                               kernel_row_count,
+                                                                               kernel_column_count,
+                                                                               kernel_feature_row_count,
+                                                                               kernel_feature_column_count,
+                                                                               parent_row_count,
+                                                                               parent_column_count,
+                                                                               parent_feature_row_count,
+                                                                               parent_feature_column_count])
+
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 0, 0, 0, 0, 0, 0] == mapped_children_sum[:, 0, 0, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 2, 0, 0, 0, 2, 0] == mapped_children_sum[:, 0, 0, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 0, 2, 0, 0, 0, 2] == mapped_children_sum[:, 0, 0, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 2, 2, 0, 0, 2, 2] == mapped_children_sum[:, 0, 0, 0, 0]))
+
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 2, 0, 2, 1, 0, 0, 2] == mapped_children_sum[:, 2, 2, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 2, 0, 2, 1, 0, 0, 2] == mapped_children_sum[:, 2, 2, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 2, 2, 1, 1, 2, 2] == mapped_children_sum[:, 2, 2, 0, 0]))
+            self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 0, 0, 1, 1, 0, 0] == mapped_children_sum[:, 2, 2, 0, 0]))
