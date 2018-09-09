@@ -104,36 +104,45 @@ class MatrixCapsNet:
         capsule_count_C = 4
         capsule_count_D = 5
 
-        final_steepness_lambda = self.increasing_value(.01, .01, is_training)
+        final_steepness_lambda = tf.constant(.01)
 
         convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
         # number of capsules is defined by number of texture patches
         primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
-        conv_caps_layer_C = self.build_convolutional_capsule_layer(
+        c_topology = TopologyBuilder().init()
+        c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+        c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+        c_topology.finish()
+
+        conv_caps_layer_C = self.build_matrix_caps(
             primary_capsule_layer_B,
-            3,
-            2,
-            capsule_count_C,
+            c_topology,
             final_steepness_lambda,
             iteration_count,
             routing_state
         )
 
-        use_coordinate_addition = True
-        aggregating_capsule_layer = self.build_aggregating_capsule_layer(
+        aggregating_topology = TopologyBuilder().init()
+        aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+        aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+        aggregating_topology.finish()
+
+        aggregating_capsule_layer = self.build_matrix_caps(
             conv_caps_layer_C,
-            use_coordinate_addition,
-            capsule_count_D,
+            aggregating_topology,
             final_steepness_lambda,
             iteration_count,
             routing_state
         )
+
+        final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+        final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
 
         next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, next_routing_state
+        return [final_activations, final_poses], next_routing_state
 
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,

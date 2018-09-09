@@ -245,9 +245,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         mcn = MatrixCapsNet()
 
+        active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
+
         estimate_parent_layer = mcn.estimate_parents_layer(
-            child_parent_assignment_weights,
-            child_activations,
+            active_child_parent_assignment_weights,
             potential_pose_vectors,
             beta_u,
             beta_a,
@@ -271,21 +272,26 @@ class TestMatrixCapsNet(tf.test.TestCase):
         parent_count = 5
         pose_element_count = 16
 
+        topology = TopologyBuilder().init()
+        topology.add_dense_connection(child_count, parent_count)
+        topology.finish()
+
         data = np.random.random([batch_size, child_count, parent_count, 1])
         data[0,0,0,0] = 1.0
-        child_parent_assignment_weights = tf.constant(data)
-        child_activations = tf.constant(np.random.random([batch_size, child_count, 1, 1]))
+        child_parent_assignment_weights = tf.constant(data, dtype=tf.float32)
+        child_activations = tf.constant(np.random.random([batch_size, child_count, 1, 1]), dtype=tf.float32)
         potential_pose_vectors = tf.constant(
-            np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])))
-        beta_u = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])))
-        beta_a = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])))
-        steepness_lambda = tf.constant(1.0, dtype=tf.float64)
+            np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])), dtype=tf.float32)
+        beta_u = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])), dtype=tf.float32)
+        beta_a = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])), dtype=tf.float32)
+        steepness_lambda = tf.constant(1.0, dtype=tf.float32)
 
         mcn = MatrixCapsNet()
 
+        active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
+
         estimate_parent_layer = mcn.estimate_parents_layer(
-            child_parent_assignment_weights,
-            child_activations,
+            active_child_parent_assignment_weights,
             potential_pose_vectors,
             beta_u,
             beta_a,
@@ -293,7 +299,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         )
         parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance = estimate_parent_layer
 
-        estimate_children_layer = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors)
+        estimate_children_layer = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors, topology)
 
         self.sess.run(tf.global_variables_initializer())
         child_parent_assignment_weights = self.sess.run([estimate_children_layer])[0]
@@ -316,10 +322,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
         steepness_lambda = tf.constant(1.0, dtype=tf.float32)
 
         mcn = MatrixCapsNet()
+        active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
 
         parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance = mcn.estimate_parents_layer(
-            child_parent_assignment_weights,
-            child_activations,
+            active_child_parent_assignment_weights,
             potential_pose_vectors,
             beta_u,
             beta_a,
@@ -351,15 +357,19 @@ class TestMatrixCapsNet(tf.test.TestCase):
         parent_count = 5
         pose_element_count = 16
 
-        parent_activations = tf.Variable(np.random.random([batch_size, 1, parent_count, 1]))
+        topology = TopologyBuilder().init()
+        topology.add_dense_connection(child_count, parent_count)
+        topology.finish()
+
+        parent_activations = tf.Variable(np.random.random([batch_size, 1, parent_count, 1]), dtype=tf.float32)
         potential_pose_vectors = tf.Variable(
-            np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])))
-        likely_parent_pose = tf.Variable(np.random.normal(np.zeros([batch_size, 1, parent_count, pose_element_count])))
-        likely_parent_pose_variance = tf.Variable(np.random.random([batch_size, 1, parent_count, pose_element_count]))
+            np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])), dtype=tf.float32)
+        likely_parent_pose = tf.Variable(np.random.normal(np.zeros([batch_size, 1, parent_count, pose_element_count])), dtype=tf.float32)
+        likely_parent_pose_variance = tf.Variable(np.random.random([batch_size, 1, parent_count, pose_element_count]), dtype=tf.float32)
 
         mcn = MatrixCapsNet()
 
-        child_parent_assignment_weights = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors)
+        child_parent_assignment_weights = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors, topology)
 
         correct_child_parent_assignment_weights = tf.constant(np.random.random([batch_size, child_count, parent_count, 1]))
 
@@ -382,6 +392,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
         parent_count = 5
         pose_element_count = 16
 
+        topology = TopologyBuilder().init()
+        topology.add_dense_connection(child_count, parent_count)
+        topology.finish()
+
         child_parent_assignment_weights = tf.Variable(np.random.random([batch_size, child_count, parent_count, 1]), dtype=tf.float32)
         child_activations  = tf.Variable(np.random.random([batch_size, child_count, 1, 1]), dtype=tf.float32)
         potential_pose_vectors  = tf.Variable(np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])), dtype=tf.float32)
@@ -391,16 +405,17 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         mcn = MatrixCapsNet()
 
+        active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
+
         parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance = mcn.estimate_parents_layer(
-            child_parent_assignment_weights,
-            child_activations,
+            active_child_parent_assignment_weights,
             potential_pose_vectors,
             beta_u,
             beta_a,
             steepness_lambda
         )
 
-        child_parent_assignment_weights = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors)
+        child_parent_assignment_weights = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors, topology)
 
         correct_child_parent_assignment_weights = tf.constant(np.random.random([batch_size, child_count, parent_count, 1]))
 

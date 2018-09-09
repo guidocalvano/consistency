@@ -101,6 +101,34 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
             self.assertFiniteAndShape(sl_output, [], "spread loss output must be finite and contain a single value after training")
 
+    def test_train_two_examples_quick(self):
+
+        sn = SmallNorb.from_cache()
+        sn.reduce_to_two_examples(.3, .3)
+
+        mcne = MatrixCapsNetEstimator().init(architecture="build_simple_architecture")
+
+        first_session_max_steps = 1
+        batch_size = 17
+        epoch_count = 2
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, first_session_max_steps)
+
+        untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        second_session_max_steps = 2
+
+        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
+
+        trained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+
+        print("untrained performance" + str(untrained_performance))
+
+        print("trained performance" + str(trained_performance))
+
+        self.assertTrue(True, "This only tested if the code actually runs, run longer test to see if learning takes place")
+
+
     def test_train_two_examples(self):
 
         sn = SmallNorb.from_cache()
