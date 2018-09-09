@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from learning import MatrixCapsNet
+from learning.TopologyBuilder import TopologyBuilder
 
 
 class TestMatrixCapsNet(tf.test.TestCase):
@@ -38,26 +39,25 @@ class TestMatrixCapsNet(tf.test.TestCase):
         network_output_data, next_routing_state_data = output_data
         activations, poses = network_output_data
 
-        self.assertFiniteAndShape(activations, [batch_count, output_count, 1, 1], 'happy flow through default network; activations')
-        self.assertFiniteAndShape(poses, [batch_count, output_count, 1, 4, 4], 'happy flow through default network; poses')
+        self.assertFiniteAndShape(activations, [batch_count, output_count, 1], 'happy flow through default network; activations')
+        self.assertFiniteAndShape(poses, [batch_count, output_count, 4, 4], 'happy flow through default network; poses')
 
         kernel_width_capsule_layer = 3
         kernel_element_count = kernel_width_capsule_layer**2
-        capsule_filter_count_layer_C_and_D = 32
-        flattened_convolutional_child_count_C_and_d = kernel_element_count * capsule_filter_count_layer_C_and_D
+        capsule_filter_count_layer_B_C_and_D = 32
+        flattened_convolutional_child_count_C_and_d = kernel_element_count * capsule_filter_count_layer_B_C_and_D
 
         patch_count_layer_B = 6**2
-        patch_batch_count_layer_B = batch_count * patch_count_layer_B
         patch_count_layer_C = 4**2
-        patch_batch_count_layer_C = batch_count * patch_count_layer_C
         output_patch_count_layer_D = patch_count_layer_C  # for each patch layer C produces an output
-        output_count_layer_D = output_patch_count_layer_D * capsule_filter_count_layer_C_and_D  # each output patch has 32 capsule filters
+        output_count_layer_B = patch_count_layer_B * capsule_filter_count_layer_B_C_and_D
+        output_count_layer_D = output_patch_count_layer_D * capsule_filter_count_layer_B_C_and_D  # each output patch has 32 capsule filters
 
         self.assertTrue(len(next_routing_state_data) == 3, "Routing takes place between 4 matrix capsule layers, so it there are 3 sets of routing weights")
         self.assertFiniteAndShape(next_routing_state_data[0],
-                                  [patch_batch_count_layer_B, flattened_convolutional_child_count_C_and_d, capsule_filter_count_layer_C_and_D, 1], "first routing layer weights must be stored correctly")
+                                  [batch_count, flattened_convolutional_child_count_C_and_d, output_count_layer_B, 1], "first routing layer weights must be stored correctly")
         self.assertFiniteAndShape(next_routing_state_data[1],
-                                  [patch_batch_count_layer_C, flattened_convolutional_child_count_C_and_d, capsule_filter_count_layer_C_and_D, 1], "second routing layer weights must be stored correctly")
+                                  [batch_count, flattened_convolutional_child_count_C_and_d, output_count_layer_D, 1], "second routing layer weights must be stored correctly")
         self.assertFiniteAndShape(next_routing_state_data[2],
                                   [batch_count, output_count_layer_D, output_count, 1], "final routing layer weights must be stored correctly")
 
@@ -188,10 +188,11 @@ class TestMatrixCapsNet(tf.test.TestCase):
         self.assertTrue(np.isfinite(activations).all(), "primary caps layer activations must produce finite data")
         self.assertTrue(np.isfinite(poses).all(), "primary caps layer poses must produce finite data")
 
-        self.assertTrue((np.array(activations.shape) == np.array([3, 14, 14, 32, 1, 1])).all(), "primary caps layer activation must have right shape")
-        self.assertTrue((np.array(poses.shape) == np.array([3, 14, 14, 32, 1, 4, 4])).all(), "primary caps layer poses must have right shape")
+        self.assertTrue((np.array(activations.shape) == np.array([3, 14, 14, 32, 1])).all(), "primary caps layer activation must have right shape")
+        self.assertTrue((np.array(poses.shape) == np.array([3, 14, 14, 32, 4, 4])).all(), "primary caps layer poses must have right shape")
 
     def test_aggregating_capsule_layer(self):
+        final_steepness_lambda, iteration_count, routing_state = tf.constant(1.0), 3, None
 
         random_input_images = np.random.normal(np.zeros([3, 32, 32, 1]))
 
@@ -202,69 +203,31 @@ class TestMatrixCapsNet(tf.test.TestCase):
         convolution_layer_A = mcn.build_encoding_convolution(input_layer, 5, 32)
         primary_capsules_B = mcn.build_primary_matrix_caps(convolution_layer_A)
 
-        aggregating_capsules = mcn.build_aggregating_capsule_layer(primary_capsules_B, False, 5, tf.constant(1.0), 3)
+        aggregating_topology = TopologyBuilder().init()
+        aggregating_topology.add_aggregation(primary_capsules_B[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+        aggregating_topology.add_dense_connection(primary_capsules_B[0].get_shape().as_list()[3], 5)
+        aggregating_topology.finish()
+
+        aggregating_capsule_layer = mcn.build_matrix_caps(
+            primary_capsules_B,
+            aggregating_topology,
+            final_steepness_lambda,
+            iteration_count,
+            None
+        )
+
+        final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+        final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
 
         self.sess.run(tf.global_variables_initializer())
-        aggregated_capsule_output = self.sess.run([aggregating_capsules[0], aggregating_capsules[1]], feed_dict={
+        aggregated_capsule_output = self.sess.run([final_activations, final_poses], feed_dict={
             input_layer: random_input_images
         })
 
         activations, poses = aggregated_capsule_output
 
-        self.assertFiniteAndShape(activations, [3, 5, 1, 1], "aggregated caps activations: ")
-        self.assertFiniteAndShape(poses, [3, 5, 1, 4, 4], "aggregated caps poses:")
-
-    def test_build_potential_parent_pose_layer(self):
-        batch_size = 3
-        child_count = 4
-        parent_broadcast_dim = 1
-        parent_count = 5
-        matrix_size = 4
-
-        input_poses = np.random.normal(np.zeros([batch_size, child_count, parent_broadcast_dim, matrix_size, matrix_size]))
-        input_layer = tf.placeholder(dtype=tf.float32, shape=input_poses.shape)
-
-        mcn = MatrixCapsNet()
-
-        potential_parent_pose_layer = mcn.build_potential_parent_pose_layer(input_layer, parent_count)
-        self.sess.run(tf.global_variables_initializer())
-        potential_parent_pose_output = self.sess.run(potential_parent_pose_layer, feed_dict={
-            input_layer: input_poses
-        })
-
-        self.assertFiniteAndShape(potential_parent_pose_output,
-                                  [batch_size, child_count, parent_count, matrix_size, matrix_size],
-                                  "after learning potential parent pose layer must still function correctly")
-
-    def test_build_potential_parent_pose_layer_learning(self):
-        batch_size = 1
-        child_count = 4
-        parent_broadcast_dim = 1
-        parent_count = 5
-        matrix_size = 4
-
-        input_poses = np.random.normal(np.zeros([batch_size, child_count, parent_broadcast_dim, matrix_size, matrix_size]))
-        input_layer = tf.Variable(input_poses, dtype=tf.float32)
-
-        mcn = MatrixCapsNet()
-
-        potential_parent_pose_layer = mcn.build_potential_parent_pose_layer(input_layer, parent_count)
-
-        correct_poses = tf.constant(np.random.normal(np.zeros([batch_size, child_count, parent_count, matrix_size, matrix_size])))
-
-        loss = tf.losses.mean_squared_error(correct_poses, potential_parent_pose_layer)
-
-        optimizer = tf.train.AdamOptimizer()
-        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
-
-        self.sess.run(tf.global_variables_initializer())
-        self.sess.run(train_op)
-
-        potential_parent_pose_output = self.sess.run(potential_parent_pose_layer)
-
-        self.assertFiniteAndShape(potential_parent_pose_output,
-                                  [batch_size, child_count, parent_count, matrix_size, matrix_size],
-                                  "after learning potential parent pose layer must still function correctly")
+        self.assertFiniteAndShape(activations, [3, 5, 1], "aggregated caps activations: ")
+        self.assertFiniteAndShape(poses, [3, 5, 4, 4], "aggregated caps poses:")
 
     def test_estimate_parents_layer(self):
 
@@ -456,55 +419,79 @@ class TestMatrixCapsNet(tf.test.TestCase):
             "one loop of learning over children parent estimation")
 
     def test_build_parent_assembly_layer(self):
-        batch_size = 3
-        child_count = 4
-        parent_count = 5
-        pose_element_count = 16
 
-        child_activations = np.random.random([batch_size, child_count, 1, 1])
-        potential_pose_vectors = np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count]))
-        steepness_lambda = tf.constant(1.0, dtype=tf.float32)
         iteration_count = 3
         routing_state = None
+        final_steepness_lambda = tf.constant(.5)
 
-        child_activations_placeholder = tf.placeholder(tf.float32, shape=[None, child_count, 1, 1])
-        potential_pose_vectors_placeholder = tf.placeholder(tf.float32, shape=[None, child_count, parent_count, pose_element_count])
+        batch_size = 3
+        spatial_shape = [6, 6]
+        input_feature_count = 32
+        output_feature_count = 32
+        pose_element_count = 16
+
+        topology = TopologyBuilder().init()
+        topology.add_spatial_convolution(spatial_shape, 3, 1)
+        topology.add_dense_connection(input_feature_count, output_feature_count)
+        topology.finish()
+
+        linear_kernel_linear_parent_shape = [batch_size, topology.linear_kernel_shape(), topology.linear_parent_shape()]
+        child_activations_lklp   = np.random.random( linear_kernel_linear_parent_shape + [1])
+        potential_pose_vectors_lklp = np.random.random(linear_kernel_linear_parent_shape + [16])
+
+        batch_size = 3
+
+        child_activations_placeholder = tf.placeholder(tf.float32, shape=[None] + linear_kernel_linear_parent_shape[1:] + [1])
+        potential_pose_vectors_placeholder = tf.placeholder(tf.float32, shape=[None] + linear_kernel_linear_parent_shape[1:] + [pose_element_count])
 
         mcn = MatrixCapsNet()
 
-        capsule_output = mcn.build_parent_assembly_layer(child_activations_placeholder, potential_pose_vectors_placeholder, steepness_lambda, iteration_count, routing_state)
+        capsule_output = mcn.build_parent_assembly_layer(child_activations_placeholder, potential_pose_vectors_placeholder, final_steepness_lambda, iteration_count, routing_state, topology)
 
         self.sess.run(tf.global_variables_initializer())
         capsule_output_data = self.sess.run(list(capsule_output), feed_dict={
-            child_activations_placeholder: child_activations,
-            potential_pose_vectors_placeholder: potential_pose_vectors
+            child_activations_placeholder: child_activations_lklp,
+            potential_pose_vectors_placeholder: potential_pose_vectors_lklp
         })
         activations, pose_vectors = capsule_output_data
 
-        self.assertFiniteAndShape(activations, [batch_size, 1, parent_count, 1], "parent assembly layer, activations:")
+        self.assertFiniteAndShape(activations, [batch_size, 1, topology.linear_parent_shape(), 1], "parent assembly layer, activations:")
         self.assertTrue((activations >= 0).all(), "activations must always be positive")
-        self.assertFiniteAndShape(pose_vectors, [batch_size, 1, parent_count, pose_element_count], "parent assembly layer, pose_vectors:")
+        self.assertFiniteAndShape(pose_vectors, [batch_size, 1, topology.linear_parent_shape(), pose_element_count], "parent assembly layer, pose_vectors:")
 
     def test_build_parent_assembly_layer_learning(self):
 
-        batch_size = 1
-        child_count = 4
-        parent_count = 5
-        pose_element_count = 16
-
-        child_activations = tf.Variable(np.random.random([batch_size, child_count, 1, 1]), dtype=tf.float32)
-        potential_pose_vectors = tf.Variable(np.random.normal(np.zeros([batch_size, child_count, parent_count, pose_element_count])), dtype=tf.float32)
-        steepness_lambda = tf.constant(1.0, dtype=tf.float32)
         iteration_count = 3
         routing_state = None
+        final_steepness_lambda = tf.constant(.5)
+
+        batch_size = 3
+        spatial_shape = [6, 6]
+        input_feature_count = 32
+        output_feature_count = 32
+        pose_element_count = 16
+
+        topology = TopologyBuilder().init()
+        topology.add_spatial_convolution(spatial_shape, 3, 1)
+        topology.add_dense_connection(input_feature_count, output_feature_count)
+        topology.finish()
+
+        linear_kernel_linear_parent_shape = [batch_size, topology.linear_kernel_shape(), topology.linear_parent_shape()]
+        child_activations_lklp   = np.random.random( linear_kernel_linear_parent_shape + [1])
+        potential_pose_vectors_lklp = np.random.random(linear_kernel_linear_parent_shape + [16])
+
+        batch_size = 3
+
+        child_activations_placeholder = tf.Variable(child_activations_lklp, dtype=tf.float32)
+        potential_pose_vectors_placeholder = tf.Variable(potential_pose_vectors_lklp, dtype=tf.float32)
 
         mcn = MatrixCapsNet()
 
-        capsule_output = mcn.build_parent_assembly_layer(child_activations, potential_pose_vectors, steepness_lambda, iteration_count, routing_state)
+        capsule_output = mcn.build_parent_assembly_layer(child_activations_placeholder, potential_pose_vectors_placeholder, final_steepness_lambda, iteration_count, routing_state, topology)
         activations, pose_vectors = capsule_output
 
-        correct_activations = tf.constant(np.random.random([batch_size, 1, parent_count, 1]), dtype=tf.float32)
-        correct_poses = tf.constant(np.random.normal(np.zeros([batch_size, 1, parent_count, pose_element_count])), dtype=tf.float32)
+        correct_activations = tf.constant(np.random.random([batch_size, 1, topology.linear_parent_shape(), 1]), dtype=tf.float32)
+        correct_poses = tf.constant(np.random.normal(np.zeros([batch_size, 1, topology.linear_parent_shape(), pose_element_count])), dtype=tf.float32)
 
         loss = tf.losses.mean_squared_error(correct_activations, activations) + tf.losses.mean_squared_error(correct_poses, pose_vectors)
 
@@ -514,36 +501,41 @@ class TestMatrixCapsNet(tf.test.TestCase):
         self.sess.run(train_op)
         activation_data, pose_data = self.sess.run([activations, pose_vectors])
 
-        self.assertFiniteAndShape(activation_data, [batch_size, 1, parent_count, 1], 'learning parent assembly layer')
-        self.assertFiniteAndShape(pose_data, [batch_size, 1, parent_count, pose_element_count], 'learning parent assembly layer')
+        self.assertFiniteAndShape(activation_data, [batch_size, 1, topology.linear_parent_shape(), 1], 'learning parent assembly layer')
+        self.assertFiniteAndShape(pose_data, [batch_size, 1, topology.linear_parent_shape(), pose_element_count], 'learning parent assembly layer')
 
     def test_build_matrix_caps_learning(self):
         iteration_count = 3
         routing_state = None
-        steepness_lambda = tf.constant(.5)
+        final_steepness_lambda = tf.constant(.5)
 
-        batch_size = 1
-        child_count = 4
-        parent_count = 5
-        pose_width = 4
+        batch_size = 3
+        spatial_shape = [6, 6]
+        input_feature_count = 32
+        output_feature_count = 32
 
-        mock_activations   = tf.Variable(tf.random_uniform([batch_size, child_count, 1, 1]))
-        mock_pose_matrices = tf.Variable(tf.random_uniform([batch_size, child_count, 1, pose_width, pose_width]))
+        topology = TopologyBuilder().init()
+        topology.add_spatial_convolution(spatial_shape, 3, 1)
+        topology.add_dense_connection(input_feature_count, output_feature_count)
+        topology.finish()
+
+        mock_activations   = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 1]))
+        mock_pose_matrices = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 4, 4]))
 
         mcn = MatrixCapsNet()
 
         output = mcn.build_matrix_caps(
-            parent_count,
-            steepness_lambda,
+            [mock_activations, mock_pose_matrices],
+            topology,
+            final_steepness_lambda,
             iteration_count,
-            mock_activations,
-            mock_pose_matrices,
-            routing_state)
+            routing_state
+        )
 
         output_activations = output[0]
         output_poses = output[1]
 
-        correct_activations = tf.random_uniform([batch_size, parent_count, 1, 1])
+        correct_activations = tf.random_uniform([batch_size] + topology.parent_shape() + [1])
 
         loss = tf.losses.mean_squared_error(correct_activations, output_activations)
 
@@ -554,7 +546,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         self.sess.run([train_op])
         activation_values = self.sess.run([output_activations])[0]
 
-        self.assertFiniteAndShape(activation_values, [batch_size, parent_count, 1, 1], "activation values should be finite after training")
+        self.assertFiniteAndShape(activation_values, [batch_size] + topology.parent_shape() + [1], "activation values should be finite after training")
 
 
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):

@@ -17,6 +17,53 @@ class TopologyBuilder:
 
         return self
 
+    # interface requirement
+    def add_spatial_convolution(self, spatial_input_dimensions, kernel_size, stride):
+        self.children_shape += spatial_input_dimensions
+
+        valid_kernel_space = (kernel_size - 1)
+        parents_share_weights = True
+        kernels_share_weights = False
+
+        parent_row_count = int((spatial_input_dimensions[0] - valid_kernel_space) / stride)
+        parent_column_count = int((spatial_input_dimensions[1] - valid_kernel_space) / stride)
+
+        self.add_convolution(np.arange(kernel_size), np.arange(parent_row_count) * stride, kernels_share_weights, parents_share_weights)
+        self.add_convolution(np.arange(kernel_size), np.arange(parent_column_count) * stride, kernels_share_weights, parents_share_weights)
+
+    # interface requirements
+    def add_semantic_convolution(self, semantic_input_dimensions, kernel_size, stride):
+        self.children_shape += semantic_input_dimensions
+
+        valid_kernel_space = 0
+        parents_share_weights = False
+        kernels_share_weights = False
+
+        parent_row_count = int((semantic_input_dimensions[0] - valid_kernel_space) / stride)
+        parent_column_count = int((semantic_input_dimensions[1] - valid_kernel_space) / stride)
+
+        self.add_convolution(np.arange(kernel_size), np.arange(parent_row_count) * stride, kernels_share_weights, parents_share_weights)
+        self.add_convolution(np.arange(kernel_size), np.arange(parent_column_count) * stride, kernels_share_weights, parents_share_weights)
+
+    # interface requirement
+    def add_dense_connection(self, input_feature_count, output_feature_count):
+        self.children_shape += [input_feature_count]
+
+        parents_share_weights = False
+        kernels_share_weights = False
+
+        self.add_convolution(np.arange(input_feature_count), np.zeros([output_feature_count]), kernels_share_weights, parents_share_weights)
+
+    # interface requirement
+    def add_aggregation(self, kernel_size, coordinate_addition_targets):
+        self.children_shape += [kernel_size, kernel_size]
+
+        parents_share_weights = False  # irrelevant parameter
+        kernels_share_weights = True
+
+        self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[0])
+        self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[1])
+
     def finish(self):
 
         self.weight_tiling = self._construct_weight_tiling()
@@ -29,7 +76,31 @@ class TopologyBuilder:
         self.child_parent_kernel_mapping = forward_edge_list
         self.parent_kernel_child_mapping = reverse_edge_list
 
+
     # interface requirement
+    def children_to_linear(self, children):
+        batch_size = children.get_shape()[0]
+        payload_dimensions = children.get_shape().as_list()[(self.child_index_dimension_count + 1):]
+        linear_child_size = np.prod(self.children_shape)
+
+        target_shape = [-1, linear_child_size]  + payload_dimensions
+
+        linear_children = tf.reshape(children, target_shape)
+
+        return linear_children
+
+    def map_children_to_linear_kernel_linear_parent(self, input_layer):
+        children_payload_shape = self.children_payload_shape(input_layer)
+        children_to_kernel_parent_map = self.map_input_layer_to_parent_kernels(input_layer)
+        target_shape = [-1] + [self.linear_kernel_shape()] + [self.linear_parent_shape()] + children_payload_shape
+        linear_kernel_linear_parent_input = tf.reshape(children_to_kernel_parent_map, target_shape)
+
+        return linear_kernel_linear_parent_input
+        # linear_kernel_linear_parent = self._to_linear_kernel_linear_parent_from_map(children_to_kernel_parent_map)
+
+    def _to_linear_kernel_linear_parent_from_map(self, kernel_parent_map):
+        linear_kernel_size = np.prod(self.kernel_)
+
     def linearized_potential_parent_poses(self,
                                           input_layer_poses # [batch, *child_dimensions, 1, pose_width, pose_height]
                                           ):
@@ -43,7 +114,9 @@ class TopologyBuilder:
         return potential_parent_poses_linearized
 
     def _compute_potential_parent_poses_map(self, input_layer_poses):
-        batch_size, pose_width, pose_height = tf.shape(input_layer_poses)[[0, -2, -1]]
+        s = tf.shape(input_layer_poses)
+        batch_size = s[0]
+        pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
 
         kernel_mapped_input = self.map_input_layer_to_parent_kernels(input_layer_poses)
         kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)
@@ -55,9 +128,7 @@ class TopologyBuilder:
 
     def _linearize_potential_parent_poses_map(self, potential_parent_poses_map):
 
-        s = tf.shape(potential_parent_poses_map)
-
-        batch_size, pose_width, pose_height = s[0], s[-2], s[-1]
+        batch_size, pose_width, pose_height = [-1] + potential_parent_poses_map.get_shape().as_list()[-2:]
 
         children_per_kernel = np.prod([len(v) for v in self.child_index_translations_for_kernel])
         parent_count = np.prod([len(v) for v in self.child_index_translations_for_parent])
@@ -69,49 +140,62 @@ class TopologyBuilder:
         return potential_parent_poses_linearized
 
     def add_coordinates(self, potential_parent_poses_map):
-        potential_parent_poses_map_shape = tf.shape(potential_parent_poses_map)
-        pose_width, pose_height = potential_parent_poses_map_shape[[-2, -1]]
+        potential_parent_poses_map_shape = [-1] + potential_parent_poses_map.get_shape().as_list()[1:]
+        pose_width, pose_height = potential_parent_poses_map_shape[-2:]
 
         for added_coordinate in self.added_coordinates:
-            coordinate_source_index = added_coordinate["source"]
+            # get info relevant to task
+            coordinate_source_index = added_coordinate["source"] + 1  # add one to skip batch dimension
             coordinate_sink_index = added_coordinate["sink"]
 
+            # compute the values that need to be inserted
             coordinate_count = potential_parent_poses_map_shape[coordinate_source_index]
-            coordinate_range = tf.range(coordinate_count)
+            coordinate_range = np.arange(coordinate_count)
             scaled_coordinate_range = coordinate_range / (coordinate_count - 1)
 
-            base_pose_matrices_shape = [coordinate_count, pose_width, pose_height]
-            base_pose_matrices = tf.zeros(base_pose_matrices_shape)
+            # create shape of template matrix for the coordinates that must be added (not broadcastable yet)
+            pose_matrices_with_coordinates_shape = [coordinate_count, pose_width, pose_height]
 
-            target_indices = tf.concat([coordinate_range, coordinate_sink_index])
+            # compute the target indices that require coordinate addition
+            coordinate_range_for_index_concatenation = np.reshape(coordinate_range, [coordinate_range.shape[0], 1])
+            coordinate_sink_for_index_concatenation = np.tile(
+                np.reshape(np.array(coordinate_sink_index), [1, len(coordinate_sink_index)]),
+                [coordinate_range.shape[0], 1]);
 
-            pose_matrices_with_coordinates = tf.scatter_update(base_pose_matrices, target_indices, scaled_coordinate_range)
+            target_indices = np.concatenate([coordinate_range_for_index_concatenation, coordinate_sink_for_index_concatenation], axis=1)
 
-            broadcastable_shape = tf.ones([tf.shape(potential_parent_poses_map_shape)[0]])
-            broadcastable_shape = tf.scatter_update(broadcastable_shape, [coordinate_source_index, -2, -1], base_pose_matrices_shape)
+            # added the coordinates to the template
 
-            broadcastable_pose_matrices_with_coordinates = tf.reshape(pose_matrices_with_coordinates, broadcastable_shape)
+            pose_matrices_with_coordinates = np.zeros(pose_matrices_with_coordinates_shape)
+            pose_matrices_with_coordinates[list(np.transpose(target_indices))] = scaled_coordinate_range
 
+            # prepare the template for broadcasting
+            broadcastable_shape = np.ones([len(potential_parent_poses_map_shape)], dtype=np.int32)
+            broadcastable_shape[[coordinate_source_index, -2, -1]] = pose_matrices_with_coordinates_shape
+
+            broadcastable_pose_matrices_with_coordinates = np.reshape(pose_matrices_with_coordinates, broadcastable_shape)
+
+            # do the broadcasting
             potential_parent_poses_map = potential_parent_poses_map + broadcastable_pose_matrices_with_coordinates
 
         return potential_parent_poses_map
 
     def map_input_layer_to_parent_kernels(self, input_layer_poses):
 
-        dimension_count_input = tf.shape(tf.shape(input_layer_poses))[0]
+        dimension_count_input = len(input_layer_poses.get_shape())
 
         # move batch dimension to the end
 
-        batch_at_end_permutation = tf.concat([tf.range(1, dimension_count_input), [0]], 0)
+        batch_at_end_permutation = list(range(1, dimension_count_input)) + [0]
         input_layer_poses_for_gather_nd = tf.transpose(input_layer_poses, batch_at_end_permutation)
 
         # gather input data
         gathered_input_slices = tf.gather_nd(input_layer_poses_for_gather_nd, self.kernel_mapping)
 
         # move batch dimension to start of input data
-        dimension_count_slices = tf.shape(tf.shape(gathered_input_slices))[0]
+        dimension_count_slices = len(gathered_input_slices.get_shape())
 
-        kernel_map_permutation = tf.concat([[dimension_count_slices - 1], tf.range(dimension_count_slices - 1)], 0)
+        kernel_map_permutation = [dimension_count_slices - 1] + list(range(dimension_count_slices - 1))
 
         kernel_mapped_slices = tf.transpose(gathered_input_slices, kernel_map_permutation)
 
@@ -136,7 +220,8 @@ class TopologyBuilder:
                                                   ):
         values_summed_per_child = self._compute_sum_for_children(parent_kernel_values)
 
-        child_values_projected_to_parent_kernel_values = self._project_child_scalars_to_parent_kernels(values_summed_per_child, tf.shape(parent_kernel_values))
+        parent_kernel_values_shape = [-1] + parent_kernel_values.get_shape().as_list()[1:]
+        child_values_projected_to_parent_kernel_values = self._project_child_scalars_to_parent_kernels(values_summed_per_child, parent_kernel_values_shape)
         return child_values_projected_to_parent_kernel_values
 
     def _compute_sum_for_children(self, parent_kernel_values):
@@ -201,21 +286,58 @@ class TopologyBuilder:
 
         return linearized_parent_kernel_child_mapping
 
+    def children_payload_shape(self, children_map):
+
+        structure_dimension_count = len(self.children_shape) + 1  # one extra for the batch dimension
+
+        return children_map.get_shape().as_list()[structure_dimension_count:]
+
+    def linear_kernel_shape(self):
+        return np.prod(self.kernel_shape())
+
+    def linear_parent_shape(self):
+        return np.prod(self.parent_shape())
+
+    def kernel_shape(self):
+        return [len(x) for x in self.child_index_translations_for_kernel]
+
+    def parent_shape(self):
+        return [len(y) for y in self.child_index_translations_for_parent]
+
     def parent_kernel_shape(self):
-        return [len(x) for x in self.child_index_translations_for_kernel] + [len(y) for y in self.child_index_translations_for_parent]
+        return self.kernel_shape() + self.parent_shape()
+
+    def parent_payload_shape(self, parent_map):
+        parent_map_shape = parent_map.get_shape().as_list()
+        parent_map_dimension_count = len(parent_map_shape)
+        parent_shape_dimension_count = len(self.parent_shape())
+        non_payload_dimension_count = parent_shape_dimension_count + 1  # one extra for the batch dimension
+
+        payload_shape = parent_map_shape[non_payload_dimension_count:]
+
+        return payload_shape
 
     # interface requirement
     def reshape_parents_to_map(self, linear_parents):
 
-        [batch_size, parent_count, one, *data_dimensions] = tf.shape(linear_parents)
+        [batch_size, parent_count, one, *data_dimensions] = [-1] + linear_parents.get_shape().as_list()[1:]
 
-        parent_map_dimensions = np.prod([len(v) for v in self.child_index_translations_for_parent])
+        parent_map_dimensions = [len(v) for v in self.child_index_translations_for_parent]
 
-        map_shape = [batch_size, parent_map_dimensions, one, *data_dimensions]
+        map_shape = [batch_size, *parent_map_dimensions, one, *data_dimensions]
 
         map_parents = tf.reshape(linear_parents, map_shape)
 
         return map_parents
+
+    def reshape_parent_map_to_linear(self, parent_map):
+        payload_shape = self.parent_payload_shape(parent_map)
+        parent_count = self.linear_parent_shape()
+        linear_parent_shape = [-1] + [parent_count] + payload_shape
+
+        linear_parents = tf.reshape(parent_map, linear_parent_shape)
+
+        return linear_parents
 
     # interface requirement
     def add_convolution(self, kernel_values, parent_values, kernels_share_weights, parents_share_weights, coordinate_addition_target=None):
@@ -321,50 +443,5 @@ class TopologyBuilder:
 
         return tiling_shape
 
-    # interface requirement
-    def add_spatial_convolution(self, spatial_input_dimensions, kernel_size, stride):
-        self.children_shape += spatial_input_dimensions
 
-        valid_kernel_space = (kernel_size - 1)
-        parents_share_weights = True
-        kernels_share_weights = False
-
-        parent_row_count = int((spatial_input_dimensions[0] - valid_kernel_space) / stride)
-        parent_column_count = int((spatial_input_dimensions[1] - valid_kernel_space) / stride)
-
-        self.add_convolution(np.arange(kernel_size), np.arange(parent_row_count) * stride, kernels_share_weights, parents_share_weights)
-        self.add_convolution(np.arange(kernel_size), np.arange(parent_column_count) * stride, kernels_share_weights, parents_share_weights)
-
-    # interface requirements
-    def add_semantic_convolution(self, semantic_input_dimensions, kernel_size, stride):
-        self.children_shape += semantic_input_dimensions
-
-        valid_kernel_space = 0
-        parents_share_weights = False
-        kernels_share_weights = False
-
-        parent_row_count = int((semantic_input_dimensions[0] - valid_kernel_space) / stride)
-        parent_column_count = int((semantic_input_dimensions[1] - valid_kernel_space) / stride)
-
-        self.add_convolution(np.arange(kernel_size), np.arange(parent_row_count) * stride, kernels_share_weights, parents_share_weights)
-        self.add_convolution(np.arange(kernel_size), np.arange(parent_column_count) * stride, kernels_share_weights, parents_share_weights)
-
-    # interface requirement
-    def add_dense_connection(self, input_feature_count, output_feature_count):
-        self.children_shape += [input_feature_count]
-
-        parents_share_weights = False
-        kernels_share_weights = False
-
-        self.add_convolution(np.arange(input_feature_count), np.zeros([output_feature_count]), kernels_share_weights, parents_share_weights)
-
-    # interface requirement
-    def add_aggregation(self, kernel_size, coordinate_addition_targets):
-        self.children_shape += [kernel_size, kernel_size]
-
-        parents_share_weights = False  # irrelevant parameter
-        kernels_share_weights = True
-
-        self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[0])
-        self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[1])
 

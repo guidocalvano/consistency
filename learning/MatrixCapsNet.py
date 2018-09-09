@@ -49,8 +49,9 @@ class MatrixCapsNet:
             primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
             c_topology = TopologyBuilder().init()
-            c_topology.add_spatial_convolution(primary_capsule_layer_B.get_shape()[[1, 2]], 3, 2)
-            c_topology.add_dense_connection(primary_capsule_layer_B.get_shape()[3], capsule_count_C)
+            c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+            c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+            c_topology.finish()
 
             conv_caps_layer_C = self.build_matrix_caps(
                 primary_capsule_layer_B,
@@ -61,9 +62,9 @@ class MatrixCapsNet:
             )
 
             d_topology = TopologyBuilder().init()
-            d_topology.add_spatial_convolution(conv_caps_layer_C.get_shape()[[1, 2]], 3, 1)
-            d_topology.add_dense_connection(conv_caps_layer_C.get_shape()[3], capsule_count_D)
-
+            d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
+            d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+            d_topology.finish()
 
             conv_caps_layer_D = self.build_matrix_caps(
                 conv_caps_layer_C,
@@ -74,8 +75,9 @@ class MatrixCapsNet:
             )
 
             aggregating_topology = TopologyBuilder().init()
-            aggregating_topology.add_aggregation(conv_caps_layer_C.get_shape()[1], [[3, 0], [3, 1]])
-            aggregating_topology.add_dense_connection(conv_caps_layer_C.get_shape()[2], 5)
+            aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
+            aggregating_topology.finish()
 
             aggregating_capsule_layer = self.build_matrix_caps(
                 conv_caps_layer_D,
@@ -85,9 +87,12 @@ class MatrixCapsNet:
                 routing_state
             )
 
+            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+
             next_routing_state = tf.get_collection("next_routing_state")
 
-        return aggregating_capsule_layer, next_routing_state
+        return [final_activations, final_poses], next_routing_state
 
     def build_simple_architecture(self, input_layer, iteration_count, routing_state):
 
@@ -142,7 +147,7 @@ class MatrixCapsNet:
 
             input_activations = input_layer_list[0]
             input_poses = input_layer_list[1]
-            [batch_size, width, height, capsule_count, parent_broadcast_dim, activation_dim] = numpy_shape_ct(
+            [batch_size, width, height, capsule_count, activation_dim] = numpy_shape_ct(
                 input_activations)
 
             normal_layer_coordinate_addition = None
@@ -243,10 +248,9 @@ class MatrixCapsNet:
         )
         pose_shape = pose_element_layer.get_shape()
 
-        parent_broadcast_dim = 1
         pose_layer = tf.reshape(
             pose_element_layer,
-            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, parent_broadcast_dim, 4, 4],
+            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, 4, 4],
             name='reshape_poses'
         )
 
@@ -262,9 +266,8 @@ class MatrixCapsNet:
             name='extract_activations'
         )
 
-        parent_broadcast_dim = tf.Dimension(1)
         # by adding two extra dimensions both em routing and the linking of layers becomes a lot easier
-        target_shape = np.concatenate([raw_activation_layer.get_shape(), [parent_broadcast_dim, tf.Dimension(1)]])
+        target_shape = np.concatenate([raw_activation_layer.get_shape(), [tf.Dimension(1)]])
         for i in range(target_shape.shape[0]):
             target_shape[i] = target_shape[i] if target_shape[i].value is not None else -1
 
@@ -520,7 +523,7 @@ class MatrixCapsNet:
                         parent_activations,
                         likely_parent_pose,
                         likely_parent_pose_variance,
-                        childs_potential_parent_pose_vectors, #@TODO limit to only parents of children
+                        children_per_potential_parent_pose_vectors, #@TODO limit to only parents of children
                         topology
                     )
                     #@TODO invert child parent assignment weights to contain children of parents
@@ -534,8 +537,7 @@ class MatrixCapsNet:
         return output_parent_activations, output_parent_poses
 
     def estimate_parents_layer(self, # m step
-                               child_parent_assignment_weights,  # [batch, child, parent, 1]
-                               child_activations,  # [batch, child, 1, 1]
+                               active_child_parent_assignment_weights,  # [batch, child, parent, 1]
                                potential_parent_pose_vectors,  # [batch, child, parent, pose_vector]
                                beta_u,  # [1, 1, parent, 1] @TODO double check correct dimensions!
                                beta_a,  # [1, 1, parent, 1] @TODO double check correct dimensions!
@@ -545,8 +547,6 @@ class MatrixCapsNet:
         with tf.name_scope('estimate_parents_layer') as scope:
             [batch_count, child_count, parent_count, pose_element_count] = numpy_shape_ct(potential_parent_pose_vectors)
 
-            assert (numpy_shape_ct(child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
-            assert (numpy_shape_ct(child_activations) == np.array([batch_count, child_count, 1, 1])).all()
             assert (numpy_shape_ct(beta_u) == np.array([1, 1, parent_count, 1])).all()
             assert (numpy_shape_ct(beta_a) == np.array([1, 1, parent_count, 1])).all()
 
@@ -555,10 +555,6 @@ class MatrixCapsNet:
             parent_axis = 2
             pose_element_axis = 3  # @TODO: double check if this is the correct axis
             # select child parent assignments based on child activity
-            # [batch, child, parent, 1]
-            #@TODO: check if broadcasting works correctly
-            active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
-            active_child_parent_assignment_weights = tf.identity(active_child_parent_assignment_weights, name='active_child_parent_assignment_weights')
 
             assert (numpy_shape_ct(active_child_parent_assignment_weights)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
@@ -699,24 +695,26 @@ class MatrixCapsNet:
             convolution_coordinates=None):
 
         with tf.name_scope('matrix_capsule_layer') as scope:
-            child_activation_vector, child_pose_layer = topology.children_to_linear(input_layer)
+            child_activation_vector, child_pose_layer = topology.map_children_to_linear_kernel_linear_parent(input_layer[0]), topology.map_children_to_linear_kernel_linear_parent(input_layer[1])
 
-            potential_parent_poses = topology.linearized_potential_parent_poses(input_layer)
+            potential_parent_poses = topology.linearized_potential_parent_poses(input_layer[1])
 
-            [batch_size, child_count, _, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
+            [batch_size, child_count, parent_count, pose_matrix_width, pose_matrix_height] = numpy_shape_ct(potential_parent_poses)
 
             pose_element_count = pose_matrix_width * pose_matrix_height
             potential_parent_pose_vectors = tf.reshape(potential_parent_poses,
                 [batch_size, child_count, parent_count, pose_element_count]
             )
             pose_element_axis = 3
-            if convolution_coordinates is not None:
-                dynamic_batch_size = tf.shape(potential_parent_poses)[0]
-                convolution_coordinates_tiled_for_parents = tf.tile(convolution_coordinates, [dynamic_batch_size, 1, parent_count, 1])
 
-                potential_parent_pose_vectors = tf.concat(
-                    [potential_parent_pose_vectors, convolution_coordinates_tiled_for_parents],
-                    axis=pose_element_axis)
+            # @TODO the code below is now part of topology, double check if it can be removed
+            # if convolution_coordinates is not None:
+            #     dynamic_batch_size = tf.shape(potential_parent_poses)[0]
+            #     convolution_coordinates_tiled_for_parents = tf.tile(convolution_coordinates, [dynamic_batch_size, 1, parent_count, 1])
+            #
+            #     potential_parent_pose_vectors = tf.concat(
+            #         [potential_parent_pose_vectors, convolution_coordinates_tiled_for_parents],
+            #         axis=pose_element_axis)
 
             parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
                 child_activation_vector,
@@ -727,8 +725,8 @@ class MatrixCapsNet:
                 topology
             )
 
-            linear_parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, -1, 1, 1])
-            linear_parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors, shape=[batch_size, -1, 1, pose_matrix_width, pose_matrix_height])
+            linear_parent_as_child_activations = tf.reshape(parent_activations, shape=[batch_size, parent_count, 1])
+            linear_parent_as_child_pose_matrices = tf.reshape(parent_pose_vectors, shape=[batch_size, parent_count, pose_matrix_width, pose_matrix_height])
 
             mapped_parent_as_child_activations = topology.reshape_parents_to_map(linear_parent_as_child_activations)
             mapped_parent_as_child_pose_matrices = topology.reshape_parents_to_map(linear_parent_as_child_pose_matrices)
