@@ -246,24 +246,60 @@ class MatrixCapsNet:
     #
     #     return reconstruction_prediction_layer, reconstruction_loss
 
-    def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count):
+    def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count,
+                                  simplify_to_axial_system=False):
+
+        elements_per_pose = 16
+        pose_axis_element_count = 4
+
+        if simplify_to_axial_system:
+            elements_per_pose = 12
+            pose_axis_element_count = 3
 
         pose_element_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
-            filters=input_filter_count * 16,
+            filters=input_filter_count * elements_per_pose,
             activation=None,
             name='extract_poses'
         )
+
         pose_shape = pose_element_layer.get_shape()
 
         pose_layer = tf.reshape(
             pose_element_layer,
-            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, 4, 4],
+            shape=[-1, pose_shape[1], pose_shape[2], input_filter_count, 4, pose_axis_element_count],
             name='reshape_poses'
         )
 
+        pose_axis_vector_axis = -2
+        pose_axis_element_axis = -1
+        if simplify_to_axial_system:
+
+            pose_layer = self.append_axial_system_row(pose_layer)
+
+            axial_system_list = tf.reshape(pose_layer, shape=[-1, 4, 4])
+
+            TopologyBuilder.add_orthogonal_unit_axis_loss(axial_system_list)
+
         return pose_layer
+
+    def append_axial_system_row(self, axial_system_tensor):
+        pose_axis_vector_axis = -2
+        pose_axis_element_axis = -1
+
+        axial_system_tensor_shape = tf.shape(axial_system_tensor)
+        tileable_axial_system_shape = np.ones([axial_system_tensor_shape.get_shape()[0].value])
+        bottom_row_axial_system = [0.0, 0.0, 0.0, 1.0]
+        tileable_axial_system_shape[pose_axis_vector_axis] = len(bottom_row_axial_system)
+        tileable_bottom_row_axial_system = tf.reshape(tf.constant(bottom_row_axial_system),
+                                                     shape=tileable_axial_system_shape)
+        tiling_shape = tf.concat([axial_system_tensor_shape[0:(pose_axis_vector_axis)], tf.constant([1, 1])], axis=0)
+        tiled_bottom_row_axial_system = tf.tile(tileable_bottom_row_axial_system, tiling_shape)
+
+        axial_system_tensor = tf.concat([axial_system_tensor, tiled_bottom_row_axial_system], axis=pose_axis_element_axis)
+
+        return axial_system_tensor
 
     def build_cast_conv_to_activation_layer(self, input_layer, input_filter_count):
 
@@ -284,7 +320,7 @@ class MatrixCapsNet:
 
         return activation_layer
 
-    def build_primary_matrix_caps(self, input_layer):
+    def build_primary_matrix_caps(self, input_layer, is_axial_system=False):
 
         with tf.name_scope('primary_matrix_capsules') as scope0:
 
@@ -293,7 +329,7 @@ class MatrixCapsNet:
             input_filter_count = input_layer.get_shape()[filter_axis]
 
             activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count)
-            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count)
+            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system)
 
         return [activation_layer, pose_layer]
 

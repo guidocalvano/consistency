@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import sys
 
 class TopologyBuilder:
 
@@ -15,7 +16,12 @@ class TopologyBuilder:
         self.shared_weights_parent = []
         self.shared_weights_kernel = []
 
+        self.is_axial_system = False
+
         return self
+
+    def set_is_axial_system(self, is_true):
+        self.is_axial_system = is_true
 
     # interface requirement
     def add_spatial_convolution(self, spatial_input_dimensions, kernel_size, stride):
@@ -203,14 +209,31 @@ class TopologyBuilder:
 
     def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
 
-        complete_weight_shape = [1] + self.weight_shape + [pose_width, pose_height]
+        complete_weight_shape = [1] + self.weight_shape + [pose_width, pose_height - self.is_axial_system]
 
         weights = tf.Variable(tf.truncated_normal(complete_weight_shape),
                               dtype=tf.float32, name='pose_transform_weights')
 
+        if self.is_axial_system:
+
+            tiling_vector_type_shape = [1] + self.weight_shape + [1, 1]
+
+            tilable_vector_type_shape = [1] * len(tiling_vector_type_shape)
+            tilable_vector_type_shape[-2] = pose_width
+
+
+            vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float32)
+
+            concatenatable_vector_type_column = tf.tile(tf.reshape(vector_type_column, tilable_vector_type_shape), tiling_vector_type_shape)
+
+            weights = tf.concat([weights, concatenatable_vector_type_column], axis=-1)
+
         kernel_tile_dimensions = [batch_size] + self.weight_tiling + [1, 1]
 
         tiled_weights = tf.tile(weights, kernel_tile_dimensions)
+
+        # by using the tiled_weights the update stays proportional to gradient based updates
+        TopologyBuilder.add_orthogonal_unit_axis_loss(tf.reshape(tiled_weights, [-1, pose_width, pose_height]))
 
         return tiled_weights
 
@@ -443,5 +466,61 @@ class TopologyBuilder:
 
         return tiling_shape
 
+    @staticmethod
+    def add_orthogonal_loss( # adds loss of dot product of components of a set of axial system matrices
+                              axial_system_list  # [axial_system, vector, component]
+        ):
+        # the objective is to reduce orthogonal loss to 0 for every single axial system it is applied to, so
+        # it should be based on l1 regularization
+
+        vector_axis = 1
+        component_axis = 2
+
+        x_axis = tf.gather(axial_system_list, [0], axis=vector_axis)
+        y_axis = tf.gather(axial_system_list, [1], axis=vector_axis)
+        z_axis = tf.gather(axial_system_list, [2], axis=vector_axis)
+
+        non_orthogonal_error = tf.reduce_sum(x_axis * y_axis + y_axis * z_axis + z_axis * x_axis, axis=component_axis)
+
+        # this causes orthogonal loss to be regularized analogous to l1 regularization, pushing it down to 0
+        non_orthogonal_loss = tf.reduce_sum(tf.abs(non_orthogonal_error))
+
+        tf.add_to_collection("orthogonal_regularization", non_orthogonal_loss)
+
+        return non_orthogonal_loss
+
+    @staticmethod
+    def add_unit_scale_loss( # adds loss of dot product of components of a set of axial system matrices
+                              axial_system_list  # [axial_system, vector, component]
+        ):
+        # The objective is to make every axial system have unit scale [1, 1, 1]
+        # To accomplish this all actual_scale - unit_scale should equal [0, 0, 0]
+        # Minimizing the absolute difference (analogous to L1 regularization) has this effect
+
+        vector_axis = 1
+        component_axis = 2
+
+        # drop translation
+        axial_system_without_translation_list = tf.gather(axial_system_list, [0, 1, 2], axis=vector_axis)
+
+        # derivative of sqrt for non zero input is problematic.
+        non_zero_abs_axial_system_list = tf.abs(axial_system_without_translation_list) + sys.float_info.epsilon
+
+        scale_list = tf.sqrt(tf.reduce_sum(non_zero_abs_axial_system_list * non_zero_abs_axial_system_list, axis=component_axis))
+
+        scale_error = scale_list - 1.0  # the difference between the actual scale and 1 is the error
+
+        # By using the absolute error as the loss behavior analogous to L1 regularization will push
+        scale_loss = tf.reduce_sum(tf.abs(scale_error))
+
+        tf.add_to_collection("unit_scale_regularization", scale_loss)
+
+        return scale_loss
 
 
+    @staticmethod
+    def add_orthogonal_unit_axis_loss(axial_system_list):
+        non_orthogonal_loss = TopologyBuilder.add_orthogonal_loss(axial_system_list)
+        scale_loss = TopologyBuilder.add_unit_scale_loss(axial_system_list)
+
+        return tf.reduce_sum(non_orthogonal_loss) + tf.reduce_sum(scale_loss)
