@@ -41,9 +41,9 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
         for p in tp:
             self.assertFiniteAndShape(p['class_ids'], [1], "class ids must be finite and of correct shape")
-            self.assertFiniteAndShape(p['probabilities'], [5, 1, 1], "probabilities must be finite and of correct shape")
-            self.assertFiniteAndShape(p['activations'], [5, 1, 1], "activations must be finite and of correct shape")
-            self.assertFiniteAndShape(p['poses'], [5, 1, 4, 4], "poses must be finite and of correct shape")
+            self.assertFiniteAndShape(p['probabilities'], [5, 1], "probabilities must be finite and of correct shape")
+            self.assertFiniteAndShape(p['activations'], [5, 1], "activations must be finite and of correct shape")
+            self.assertFiniteAndShape(p['poses'], [5, 4, 4], "poses must be finite and of correct shape")
 
 
         print("first test completed")
@@ -68,9 +68,9 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
         for p in tp:
             self.assertFiniteAndShape(p['class_ids'], [1], "class ids must be finite and of correct shape")
-            self.assertFiniteAndShape(p['probabilities'], [5, 1, 1], "probabilities must be finite and of correct shape")
-            self.assertFiniteAndShape(p['activations'], [5, 1, 1], "activations must be finite and of correct shape")
-            self.assertFiniteAndShape(p['poses'], [5, 1, 4, 4], "poses must be finite and of correct shape")
+            self.assertFiniteAndShape(p['probabilities'], [5, 1], "probabilities must be finite and of correct shape")
+            self.assertFiniteAndShape(p['activations'], [5, 1], "activations must be finite and of correct shape")
+            self.assertFiniteAndShape(p['poses'], [5, 4, 4], "poses must be finite and of correct shape")
 
     def test_spread_loss(self):
 
@@ -179,7 +179,7 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
         untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
 
-        second_session_max_steps = 300
+        second_session_max_steps = 1000
         batch_size = 17
 
         mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
