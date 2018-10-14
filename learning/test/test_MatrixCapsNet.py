@@ -1,3 +1,4 @@
+import sys
 import tensorflow as tf
 import numpy as np
 from learning import MatrixCapsNet
@@ -190,6 +191,27 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         self.assertTrue((np.array(activations.shape) == np.array([3, 14, 14, 32, 1])).all(), "primary caps layer activation must have right shape")
         self.assertTrue((np.array(poses.shape) == np.array([3, 14, 14, 32, 4, 4])).all(), "primary caps layer poses must have right shape")
+
+    def test_primary_capsule_layer_axial_system(self):
+        input_layer = tf.placeholder('float', shape=[None, 32, 32, 1])
+
+        mcn = MatrixCapsNet()
+
+        convolution_layer_A = mcn.build_encoding_convolution(input_layer, 5, 32)
+        primary_capsules_B = mcn.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
+
+        random_input_images = np.random.normal(np.zeros([3, 32, 32, 1]))
+
+        self.sess.run(tf.global_variables_initializer())
+        primary_capsule_output = self.sess.run([primary_capsules_B[0], primary_capsules_B[1]], feed_dict={
+            input_layer: random_input_images
+        })
+
+        _, poses = primary_capsule_output
+
+        self.assertTrue(np.all(poses[:, :, :, :, :, 3] == np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)), "primary caps layer that is axial system must produce poses with correct type elements")
+
+
 
     def test_aggregating_capsule_layer(self):
         final_steepness_lambda, iteration_count, routing_state = tf.constant(1.0), 3, None

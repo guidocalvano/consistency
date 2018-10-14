@@ -64,8 +64,10 @@ class MatrixCapsNetEstimator:
         is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
         routing_state = None
 
-        network_output, reset_routing_configuration_op = \
-            getattr(MatrixCapsNet(), self.architecture)(examples, iteration_count, routing_state)
+        mcn = MatrixCapsNet()
+
+        network_output, reset_routing_configuration_op, regularization_loss = \
+            getattr(mcn, self.architecture)(examples, iteration_count, routing_state)
 
         (activations, poses) = network_output
 
@@ -85,6 +87,8 @@ class MatrixCapsNetEstimator:
 
         loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
             "margin": spread_loss_margin})
+
+        if regularization_loss: loss = loss + regularization_loss
 
         # Compute evaluation metrics.
         accuracy = tf.metrics.accuracy(labels=labels,

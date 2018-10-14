@@ -92,7 +92,7 @@ class MatrixCapsNet:
 
             next_routing_state = tf.get_collection("next_routing_state")
 
-        return [final_activations, final_poses], next_routing_state
+        return [final_activations, final_poses], next_routing_state, None
 
     def build_simple_architecture(self, input_layer, iteration_count, routing_state):
 
@@ -142,7 +142,245 @@ class MatrixCapsNet:
 
         next_routing_state = tf.get_collection("next_routing_state")
 
-        return [final_activations, final_poses], next_routing_state
+        return [final_activations, final_poses], next_routing_state, None
+
+    def build_axial_system_architecture(self, input_layer, iteration_count, routing_state):
+
+        with tf.name_scope('axial_system_matrix_capsule_architecture') as scope0:
+
+            texture_patches_A = 32
+            capsule_count_C = 32
+            capsule_count_D = 32
+            capsule_count_E = 5
+
+            final_steepness_lambda = tf.constant(.01)
+
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
+
+            c_topology = TopologyBuilder().init()
+            c_topology.set_is_axial_system(True)
+            c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+            c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+            c_topology.finish()
+
+            conv_caps_layer_C = self.build_matrix_caps(
+                primary_capsule_layer_B,
+                c_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            d_topology = TopologyBuilder().init()
+            d_topology.set_is_axial_system(True)
+            d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
+            d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+            d_topology.finish()
+
+            conv_caps_layer_D = self.build_matrix_caps(
+                conv_caps_layer_C,
+                d_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            aggregating_topology = TopologyBuilder().init()
+            aggregating_topology.set_is_axial_system(True)
+            aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
+            aggregating_topology.finish()
+
+            aggregating_capsule_layer = self.build_matrix_caps(
+                conv_caps_layer_D,
+                aggregating_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+
+            next_routing_state = tf.get_collection("next_routing_state")
+
+            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization")) + tf.reduce_sum(tf.get_collection("orthogonal_regularization"))
+
+        return [final_activations, final_poses], next_routing_state, axial_system_loss
+
+    def build_semantic_convolution_architecture(self, input_layer, iteration_count, routing_state):
+
+        with tf.name_scope('semantic_convolution_matrix_capsule_architecture') as scope0:
+
+            texture_patches_A = 64
+            capsule_count_C = 32
+            capsule_count_D = 32
+            capsule_count_E = 5
+
+            final_steepness_lambda = tf.constant(.01)
+
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
+
+            semantically_convolved_input_shape = primary_capsule_layer_B[0].get_shape().as_list()[1:3] + [8, 8]
+
+            semantically_convolved_activation_shape = semantically_convolved_input_shape + [1]
+            semantically_convolved_pose_shape = semantically_convolved_input_shape + [4, 4]
+
+            semantically_convolved_primary_capsule_layer_B = [
+                tf.reshape(primary_capsule_layer_B[0], semantically_convolved_activation_shape),
+                tf.reshape(primary_capsule_layer_B[1], semantically_convolved_pose_shape)
+            ]
+
+            c_topology = TopologyBuilder().init()
+            c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+            c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
+            c_topology.finish()
+
+            conv_caps_layer_C = self.build_matrix_caps(
+                primary_capsule_layer_B,
+                c_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            d_topology = TopologyBuilder().init()
+            d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
+            d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
+            d_topology.finish()
+
+            conv_caps_layer_D = self.build_matrix_caps(
+                conv_caps_layer_C,
+                d_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            semantically_collapsed_layer_D_shape = conv_caps_layer_D[0].get_shape().as_list()[0:3] + \
+                                                   [np.prod(conv_caps_layer_C[0].get_shape().as_list()[3:5])]
+
+            semantically_collapsed_layer_D_activation_shape = semantically_collapsed_layer_D_shape + [1]
+            semantically_collapsed_layer_D_pose_shape = semantically_collapsed_layer_D_shape + [4, 4]
+
+            semantically_collapsed_layer_D = [
+                tf.reshape(conv_caps_layer_D[0], semantically_convolved_activation_shape),
+                tf.reshape(conv_caps_layer_D[1], semantically_convolved_pose_shape)
+            ]
+
+            aggregating_topology = TopologyBuilder().init()
+            aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
+            aggregating_topology.finish()
+
+            aggregating_capsule_layer = self.build_matrix_caps(
+                conv_caps_layer_D,
+                aggregating_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+
+            next_routing_state = tf.get_collection("next_routing_state")
+
+        return [final_activations, final_poses], next_routing_state, None
+
+    def build_semantic_convolution_axial_system_architecture(self, input_layer, iteration_count, routing_state):
+
+        with tf.name_scope('semantic_convolved_axial_system_matrix_capsule_architecture') as scope0:
+
+            texture_patches_A = 64
+            capsule_count_C = 32
+            capsule_count_D = 32
+            capsule_count_E = 5
+
+            final_steepness_lambda = tf.constant(.01)
+
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
+
+            semantically_convolved_input_shape = primary_capsule_layer_B[0].get_shape().as_list()[1:3] + [8, 8]
+
+            semantically_convolved_activation_shape = semantically_convolved_input_shape + [1]
+            semantically_convolved_pose_shape = semantically_convolved_input_shape + [4, 4]
+
+            semantically_convolved_primary_capsule_layer_B = [
+                tf.reshape(primary_capsule_layer_B[0], semantically_convolved_activation_shape),
+                tf.reshape(primary_capsule_layer_B[1], semantically_convolved_pose_shape)
+            ]
+
+            c_topology = TopologyBuilder().init()
+            c_topology.set_is_axial_system(True)
+            c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+            c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
+            c_topology.finish()
+
+            conv_caps_layer_C = self.build_matrix_caps(
+                primary_capsule_layer_B,
+                c_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            d_topology = TopologyBuilder().init()
+            d_topology.set_is_axial_system(True)
+            d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
+            d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
+            d_topology.finish()
+
+            conv_caps_layer_D = self.build_matrix_caps(
+                conv_caps_layer_C,
+                d_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            semantically_collapsed_layer_D_shape = conv_caps_layer_D[0].get_shape().as_list()[0:3] + \
+                                                   [np.prod(conv_caps_layer_C[0].get_shape().as_list()[3:5])]
+
+            semantically_collapsed_layer_D_activation_shape = semantically_collapsed_layer_D_shape + [1]
+            semantically_collapsed_layer_D_pose_shape = semantically_collapsed_layer_D_shape + [4, 4]
+
+            semantically_collapsed_layer_D = [
+                tf.reshape(conv_caps_layer_D[0], semantically_convolved_activation_shape),
+                tf.reshape(conv_caps_layer_D[1], semantically_convolved_pose_shape)
+            ]
+
+            aggregating_topology = TopologyBuilder().init()
+            aggregating_topology.set_is_axial_system(True)
+            aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
+            aggregating_topology.finish()
+
+            aggregating_capsule_layer = self.build_matrix_caps(
+                conv_caps_layer_D,
+                aggregating_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
+
+            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+
+            next_routing_state = tf.get_collection("next_routing_state")
+
+            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization")) + tf.reduce_sum(tf.get_collection("orthogonal_regularization"))
+
+        return [final_activations, final_poses], next_routing_state, axial_system_loss
 
     def build_aggregating_capsule_layer(self,
                                         input_layer_list,

@@ -1271,3 +1271,109 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.all(projected_children_sums_map[:, 0, 2, 0, 2, 1, 0, 0, 2] == mapped_children_sum[:, 2, 2, 0, 0]))
             self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 2, 2, 1, 1, 2, 2] == mapped_children_sum[:, 2, 2, 0, 0]))
             self.assertTrue(np.all(projected_children_sums_map[:, 0, 0, 0, 0, 1, 1, 0, 0] == mapped_children_sum[:, 2, 2, 0, 0]))
+
+    def test_add_orthogonal_unit_axis_loss_with_rotation_and_translation(self):
+
+        a = .33 * np.pi
+
+        m = np.identity(4, dtype=np.float32)
+
+        m[0, 0] = np.cos(a)
+        m[0, 1] = np.sin(a)
+
+        m[1, 0] = -np.sin(a)
+        m[1, 1] = np.cos(a)
+
+        m[3, :] = [1, 2, 3, 1]
+
+        tf_matrix = tf.reshape(tf.constant(m), [-1, 4, 4])
+
+        double_row_matrix = tf.concat([tf_matrix, tf_matrix], axis=0)
+
+        loss = TopologyBuilder.add_orthogonal_unit_axis_loss(double_row_matrix)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            l = sess.run(loss)
+
+            self.assertTrue(l == 0, "loss for a orthogonal matrix must be 0")
+
+    def test_add_orthogonal_unit_axis_loss_with_scaling(self):
+
+        a = .33 * np.pi
+
+        m = np.identity(4, dtype=np.float32)
+
+        m[0, 0] = np.cos(a) * 3.0
+        m[0, 1] = np.sin(a)
+
+        m[1, 0] = -np.sin(a)
+        m[1, 1] = np.cos(a)
+
+        m[3, :] = [1, 2, 3, 1]
+
+        tf_matrix = tf.reshape(tf.constant(m), [-1, 4, 4])
+
+        double_row_matrix = tf.concat([tf_matrix, tf_matrix], axis=0)
+
+        loss = TopologyBuilder.add_orthogonal_unit_axis_loss(double_row_matrix)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            l = sess.run(loss)
+
+            self.assertTrue(l > 0.0, "loss for a non orthogonal matrix (due to scaling) must be greater than 0")
+
+    def test_add_orthogonal_unit_axis_without_orthogonality(self):
+
+        a = .33 * np.pi
+
+        m = np.identity(4, dtype=np.float32)
+
+        m[0, 0] = np.cos(a)
+        m[0, 1] = np.sin(a)
+
+        m[3, :] = [1, 2, 3, 1]
+
+        tf_matrix = tf.reshape(tf.constant(m), [-1, 4, 4])
+
+        double_row_matrix = tf.concat([tf_matrix, tf_matrix], axis=0)
+
+        loss = TopologyBuilder.add_orthogonal_unit_axis_loss(double_row_matrix)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            l = sess.run(loss)
+
+            self.assertTrue(l > 0.0, "loss for a non orthogonal matrix (due to non orthogonal axes) must be greater than 0")
+
+    def test_axial_system_weights(self):
+
+        input_count, output_count = 2, 3
+        batch_size = 2
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.set_is_axial_system(True)
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish()
+
+        axial_system_input = np.random.random([batch_size, input_count, pose_row_count, pose_column_count])
+        axial_system_input[:, :, :, 3] = np.array([0.0, 0.0, 0.0, 1.0])
+
+        output = self.topology._compute_potential_parent_poses_map(tf.constant(axial_system_input, dtype=tf.float32))
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            self.assertTrue(np.all(output_values[:, :, :, :, 3] == np.array([0.0, 0.0, 0.0, 1.0])), "output must remain axial system" )
