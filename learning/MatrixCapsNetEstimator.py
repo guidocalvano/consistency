@@ -154,7 +154,7 @@ class MatrixCapsNetEstimator:
         test_result = estimator.evaluate(input_fn=test_fn)
         print("test results computed")
 
-        test_predictions = estimator.predict(input_fn=test_fn)
+        test_predictions = list(estimator.predict(input_fn=test_fn))
         print("test predictions computed")
 
         return test_result, validation_result, test_predictions
