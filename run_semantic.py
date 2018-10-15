@@ -11,6 +11,7 @@ mcne = MatrixCapsNetEstimator().init(architecture="build_semantic_convolution_ar
 
 batch_size = 30
 epoch_count = 50
+raise Error("Must define sensible max steps")
 max_steps = 1000
 
 results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps)

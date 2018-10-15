@@ -3,6 +3,7 @@ from learning.MatrixCapsNetEstimator import MatrixCapsNetEstimator
 import dill as pickle
 import config
 import numpy as np
+import os
 
 
 sn = SmallNorb.from_cache()
@@ -13,9 +14,12 @@ mcne = MatrixCapsNetEstimator().init()
 
 batch_size = 30
 epoch_count = 50
-max_steps = 1000
+max_steps = 200
 
 results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps)
+
+if not os.path.exists(os.path.dirname(config.RESULT_FILE)):
+    os.makedirs(os.path.dirname(config.RESULT_FILE))
 
 with open(config.RESULT_FILE) as f:
     pickle.dump(results, f)
