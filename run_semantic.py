@@ -16,7 +16,10 @@ max_steps = 1000
 
 results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps)
 
-with open(config.RESULT_FILE) as f:
+if not os.path.exists(os.path.dirname(config.RESULT_FILE)):
+    os.makedirs(os.path.dirname(config.RESULT_FILE))
+
+with open(config.RESULT_FILE, 'wb') as f:
     pickle.dump(results, f)
 
 test_result, validation_result, test_predictions = results
