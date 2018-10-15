@@ -14,7 +14,7 @@ mcne = MatrixCapsNetEstimator().init()
 
 batch_size = 30
 epoch_count = 50
-max_steps = 200
+max_steps = 50
 
 results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps)
 
