@@ -105,8 +105,18 @@ class MatrixCapsNetEstimator:
         # Create training op.
         assert mode == tf.estimator.ModeKeys.TRAIN
 
-        optimizer = tf.train.AdamOptimizer()
+        optimizer = tf.train.AdamOptimizer(learning_rate=.02)
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
+        grads = optimizer.compute_gradients(loss)
+        # weights_by_layer = tf.get_collection('weights')
+
+        for index, grad in enumerate(grads):
+            tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
+
+        # for layer_id, weights in enumerate(weights_by_layer):
+        #     tf.summary.histogram('weights_at_layer' + str(layer_id), tf.gradients(loss, weights))
+
 
         class TrainingHooks(tf.train.SessionRunHook):
 
@@ -128,7 +138,7 @@ class MatrixCapsNetEstimator:
 
         return train_spec
 
-    def train_and_test(self, small_norb, batch_size=30, epoch_count=10, max_steps=None, model_path=config.TF_MODEL_PATH):
+    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, model_path=config.TF_MODEL_PATH):
 
         if max_steps is None:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
@@ -164,7 +174,8 @@ class MatrixCapsNetEstimator:
 
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
-            keep_checkpoint_max=20  # Retain the 20 most recent checkpoints.
+            keep_checkpoint_max=20,  # Retain the 20 most recent checkpoints.
+            save_summary_steps=500  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
         )
 
         estimator = tf.estimator.Estimator(

@@ -72,7 +72,7 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
             self.assertFiniteAndShape(p['activations'], [5, 1], "activations must be finite and of correct shape")
             self.assertFiniteAndShape(p['poses'], [5, 4, 4], "poses must be finite and of correct shape")
 
-    def test_spread_loss(self):
+    def test_train_spread_loss(self):
 
         mcne = MatrixCapsNetEstimator()
 

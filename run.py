@@ -3,17 +3,19 @@ from learning.MatrixCapsNetEstimator import MatrixCapsNetEstimator
 import dill as pickle
 import config
 import numpy as np
+import os.path
 
 
 sn = SmallNorb.from_cache()
 
 mcne = MatrixCapsNetEstimator().init()
 
-batch_size = 30
-epoch_count = 50
-max_steps = 1000
+batch_size = 64
+epoch_count = 600
 
-results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps)
+max_steps = 302700
+
+results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config.TF_MODEL_PATH, 'default_hinton'))
 
 with open(config.RESULT_FILE) as f:
     pickle.dump(results, f)

@@ -29,7 +29,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         input_layer = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
 
-        network_output, next_routing_state = MatrixCapsNet().build_default_architecture(input_layer, iteration_count, routing_state)
+        network_output, next_routing_state, _ = MatrixCapsNet().build_default_architecture(input_layer, iteration_count, routing_state)
 
         self.sess.run(tf.global_variables_initializer())
 

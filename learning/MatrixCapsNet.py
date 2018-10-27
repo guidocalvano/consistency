@@ -43,54 +43,62 @@ class MatrixCapsNet:
 
             final_steepness_lambda = tf.constant(.01)
 
-            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+            with tf.name_scope('layerA') as scope1:
+                convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
-            # number of capsules is defined by number of texture patches
-            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
+            with tf.name_scope('layerB') as scope2:
+                # number of capsules is defined by number of texture patches
+                primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A)
 
-            c_topology = TopologyBuilder().init()
-            c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
-            c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
-            c_topology.finish()
+            with tf.name_scope('layerC') as scope3:
+                c_topology = TopologyBuilder().init()
+                c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+                c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+                c_topology.finish()
 
-            conv_caps_layer_C = self.build_matrix_caps(
-                primary_capsule_layer_B,
-                c_topology,
-                final_steepness_lambda,
-                iteration_count,
-                routing_state
-            )
+                conv_caps_layer_C = self.build_matrix_caps(
+                    primary_capsule_layer_B,
+                    c_topology,
+                    final_steepness_lambda,
+                    iteration_count,
+                    routing_state
+                )
 
-            d_topology = TopologyBuilder().init()
-            d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
-            d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
-            d_topology.finish()
+            with tf.name_scope('layerD') as scope3:
+                d_topology = TopologyBuilder().init()
+                d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
+                d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+                d_topology.finish()
 
-            conv_caps_layer_D = self.build_matrix_caps(
-                conv_caps_layer_C,
-                d_topology,
-                final_steepness_lambda,
-                iteration_count,
-                routing_state
-            )
+                conv_caps_layer_D = self.build_matrix_caps(
+                    conv_caps_layer_C,
+                    d_topology,
+                    final_steepness_lambda,
+                    iteration_count,
+                    routing_state
+                )
 
-            aggregating_topology = TopologyBuilder().init()
-            aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
-            aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
-            aggregating_topology.finish()
+            with tf.name_scope('layerAggregation') as scope3:
 
-            aggregating_capsule_layer = self.build_matrix_caps(
-                conv_caps_layer_D,
-                aggregating_topology,
-                final_steepness_lambda,
-                iteration_count,
-                routing_state
-            )
+                aggregating_topology = TopologyBuilder().init()
+                aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+                aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
+                aggregating_topology.finish()
 
-            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
-            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+                aggregating_capsule_layer = self.build_matrix_caps(
+                    conv_caps_layer_D,
+                    aggregating_topology,
+                    final_steepness_lambda,
+                    iteration_count,
+                    routing_state
+                )
 
-            next_routing_state = tf.get_collection("next_routing_state")
+            with tf.name_scope('outputFormatting') as scope3:
+
+                final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+                final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+
+                next_routing_state = tf.get_collection("next_routing_state")
 
         return [final_activations, final_poses], next_routing_state, None
 
@@ -812,6 +820,8 @@ class MatrixCapsNet:
                     #@TODO invert child parent assignment weights to contain children of parents
                     # rather than parents of children
 
+            tf.summary.histogram('final_routing', child_parent_assignment_weights)
+
             tf.add_to_collection('next_routing_state', child_parent_assignment_weights)
 
             output_parent_activations = parent_activations
@@ -1013,6 +1023,10 @@ class MatrixCapsNet:
 
             mapped_parent_as_child_activations = topology.reshape_parents_to_map(linear_parent_as_child_activations)
             mapped_parent_as_child_pose_matrices = topology.reshape_parents_to_map(linear_parent_as_child_pose_matrices)
+
+            tf.summary.histogram('activations', mapped_parent_as_child_activations)
+            tf.summary.histogram('poses', mapped_parent_as_child_pose_matrices)
+            tf.summary.histogram('poses_determinant', tf.linalg.det(mapped_parent_as_child_pose_matrices))
 
         return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 
