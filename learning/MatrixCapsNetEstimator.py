@@ -105,7 +105,7 @@ class MatrixCapsNetEstimator:
         # Create training op.
         assert mode == tf.estimator.ModeKeys.TRAIN
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=.02)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         grads = optimizer.compute_gradients(loss)

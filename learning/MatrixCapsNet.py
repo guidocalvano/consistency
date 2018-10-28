@@ -458,9 +458,12 @@ class MatrixCapsNet:
         return normal_layer
 
     def build_encoding_convolution(self, input_layer, kernel_size, filter_count):
+        #@TODO: Make the standard deviation take into account the number of outputs per node
+        xavier_stddev = np.sqrt(1.0 / (kernel_size * kernel_size))
         output_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=kernel_size,
+            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=xavier_stddev),
             filters=filter_count,
             strides=[2, 2],
             activation=tf.nn.relu,  #@TODO: test leaky relu
@@ -705,49 +708,49 @@ class MatrixCapsNet:
 
         return results
 
-    def build_children_of_potential_parent_pose_layer(self,
-                                                      child_poses,  # [batch, x, y, f0 ... fn, m0, m1]
-                                                      parent_capsule_feature_count,
-                                                      spatial_kernel_size,
-                                                      spatial_stride):
-        with tf.name_scope('potential_parent_pose_layer') as scope:
-            # retrieve relevant dimensions
-            child_poses_shape = numpy_shape_ct(child_poses)
-            batch_size = tf.shape(child_poses)[0]
-            child_row_count = child_poses_shape[1]
-            child_column_count = child_poses_shape[2]
-            child_feature_count = child_poses_shape[3]
-
-            # UNFORTUNATELY tf.matmul DOES NOT IMPLEMENT BROADCASTING, SO THE CODE BELOW DOES SO MANUALLY
-
-            # A pose transform matrix exists from each child to each parent.
-            # Weights with bigger stddev improve numerical stability
-            pose_transform_weights = tf.Variable(
-                tf.truncated_normal([1, child_capsule_count, parent_capsule_feature_count, 4, 4], mean=0.0, stddev=1.0),
-                dtype=tf.float32, name='pose_transform_weights')
-
-            # Potential parent poses must be predicted for each batch row. So weights must be copied for each batch row.
-            pose_transform_weights_copied_for_batch = tf.tile(pose_transform_weights, [batch_size, 1, 1, 1, 1], name='pose_transform_tiled')
-
-            ## Because the child poses are used to produce the pose of every potential parent, a copy is necessary for
-            ## predicting the potential parent poses
-            ## A column after the child capsule column is added,
-            # child_poses_with_copy_column = tf.reshape(child_poses, shape=[batch_size, child_capsule_count, 1, 4, 4])
-
-            # above code redundant now that broadcasting dims are part of specs
-
-            # so output can be copied for each parent
-            child_poses_copied_for_parents = tf.tile(child_poses, [1, 1, parent_capsule_feature_count, 1, 1], name='child_pose_tiled')
-
-            # child poses are now copied for each potential parent, and child to parent tranforms are copied for each batch
-            # row, resulting in two tensors; a tensor containing pose matrices in its last two indices, and one
-            # containing pose transformations from each child to each potential parent pose
-            #
-            # matmul will now iterate over batch, child capsule, and parent capsule in both tensors and multiply the child
-            # pose with the pose transform to output the pose of a potential parent
-            potential_parent_poses = tf.matmul(child_poses_copied_for_parents, pose_transform_weights_copied_for_batch, name='child_transformation')
-
-        return potential_parent_poses
+    # def build_children_of_potential_parent_pose_layer(self,
+    #                                                   child_poses,  # [batch, x, y, f0 ... fn, m0, m1]
+    #                                                   parent_capsule_feature_count,
+    #                                                   spatial_kernel_size,
+    #                                                   spatial_stride):
+    #     with tf.name_scope('potential_parent_pose_layer') as scope:
+    #         # retrieve relevant dimensions
+    #         child_poses_shape = numpy_shape_ct(child_poses)
+    #         batch_size = tf.shape(child_poses)[0]
+    #         child_row_count = child_poses_shape[1]
+    #         child_column_count = child_poses_shape[2]
+    #         child_feature_count = child_poses_shape[3]
+    #
+    #         # UNFORTUNATELY tf.matmul DOES NOT IMPLEMENT BROADCASTING, SO THE CODE BELOW DOES SO MANUALLY
+    #
+    #         # A pose transform matrix exists from each child to each parent.
+    #         # Weights with bigger stddev improve numerical stability
+    #         pose_transform_weights = tf.Variable(
+    #             tf.truncated_normal([1, child_capsule_count, parent_capsule_feature_count, 4, 4], mean=0.0, stddev=1.0),
+    #             dtype=tf.float32, name='pose_transform_weights')
+    #
+    #         # Potential parent poses must be predicted for each batch row. So weights must be copied for each batch row.
+    #         pose_transform_weights_copied_for_batch = tf.tile(pose_transform_weights, [batch_size, 1, 1, 1, 1], name='pose_transform_tiled')
+    #
+    #         ## Because the child poses are used to produce the pose of every potential parent, a copy is necessary for
+    #         ## predicting the potential parent poses
+    #         ## A column after the child capsule column is added,
+    #         # child_poses_with_copy_column = tf.reshape(child_poses, shape=[batch_size, child_capsule_count, 1, 4, 4])
+    #
+    #         # above code redundant now that broadcasting dims are part of specs
+    #
+    #         # so output can be copied for each parent
+    #         child_poses_copied_for_parents = tf.tile(child_poses, [1, 1, parent_capsule_feature_count, 1, 1], name='child_pose_tiled')
+    #
+    #         # child poses are now copied for each potential parent, and child to parent tranforms are copied for each batch
+    #         # row, resulting in two tensors; a tensor containing pose matrices in its last two indices, and one
+    #         # containing pose transformations from each child to each potential parent pose
+    #         #
+    #         # matmul will now iterate over batch, child capsule, and parent capsule in both tensors and multiply the child
+    #         # pose with the pose transform to output the pose of a potential parent
+    #         potential_parent_poses = tf.matmul(child_poses_copied_for_parents, pose_transform_weights_copied_for_batch, name='child_transformation')
+    #
+    #     return potential_parent_poses
 
     # def cast_pose_matrices_to_vectors(self, pose_matrices):  # takes the last two matrix indices and reshapes into vector indices
     #     current_shape = pose_matrices.get_shape()
@@ -948,8 +951,8 @@ class MatrixCapsNet:
 
             # [batch, child, parent, 1]
             power = -tf.reduce_sum(
-                potential_parent_pose_variance /
-                (likely_parent_pose_variance * 2 + sys.float_info.epsilon), axis=pose_element_axis, keepdims=True)
+                potential_parent_pose_variance / (likely_parent_pose_variance * 2 + sys.float_info.epsilon),
+                axis=pose_element_axis, keepdims=True)
 
             power = tf.identity(power, name='power')
 
@@ -959,7 +962,7 @@ class MatrixCapsNet:
             # parent_probability_per_child = factor * tf.exp(power)
             # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-            parent_probability_per_child = tf.exp(power) / divisor
+            parent_probability_per_child = tf.exp(power) / (divisor + sys.float_info.epsilon)
             parent_probability_per_child = tf.identity(parent_probability_per_child, name='parent_probability_per_child')
 
             # [batch, child, parent, 1]

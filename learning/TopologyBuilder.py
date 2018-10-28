@@ -216,7 +216,11 @@ class TopologyBuilder:
 
         complete_weight_shape = [1] + self.weight_shape + [pose_width, pose_height - self.is_axial_system]
 
-        weights = tf.Variable(tf.truncated_normal(complete_weight_shape),
+        input_count_per_node = np.product(self.kernel_shape())
+        #@TODO: Make the standard deviation take into account the number of outputs per node
+        xavierish_standard_deviation = np.sqrt(1.0 / input_count_per_node)  # -ish because technically xavier init is for tanh not sigmoid
+
+        weights = tf.Variable(tf.truncated_normal(complete_weight_shape, stddev=xavierish_standard_deviation),
                               dtype=tf.float32, name='pose_transform_weights')
 
         tf.summary.histogram('pose_transform_weights', weights)

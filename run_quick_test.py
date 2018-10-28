@@ -13,7 +13,7 @@ sn.reduce_to_two_examples(.3, .3)
 
 mcne = MatrixCapsNetEstimator().init()
 
-batch_size = 30
+batch_size = 17
 epoch_count = 50
 max_steps = 50
 
