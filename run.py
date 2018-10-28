@@ -5,6 +5,7 @@ import config
 import numpy as np
 import os.path
 
+result_name = 'default_hinton'
 
 sn = SmallNorb.from_cache()
 
@@ -17,9 +18,14 @@ epoch_count = total_processed_examples / sn.training_example_count()  # = 600
 
 max_steps = total_processed_examples / batch_size  # = 1143529
 
-results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config.TF_MODEL_PATH, 'default_hinton'))
+results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config.TF_MODEL_PATH, result_name))
 
-with open(config.RESULT_FILE) as f:
+result_file_path = os.path.join(config.OUTPUT_PATH, result_name + '.dill')
+
+if not os.path.exists(os.path.dirname(result_file_path)):
+    os.makedirs(os.path.dirname(result_file_path))
+
+with open(result_file_path) as f:
     pickle.dump(results, f)
 
 test_result, validation_result, test_predictions = results
