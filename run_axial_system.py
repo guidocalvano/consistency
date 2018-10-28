@@ -26,7 +26,7 @@ result_file_path = os.path.join(config.OUTPUT_PATH, result_name + '.dill')
 if not os.path.exists(os.path.dirname(result_file_path)):
     os.makedirs(os.path.dirname(result_file_path))
 
-with open(result_file_path) as f:
+with open(result_file_path, 'wb') as f:
     pickle.dump(results, f)
 
 test_result, validation_result, test_predictions = results
