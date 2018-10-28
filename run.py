@@ -4,8 +4,9 @@ import dill as pickle
 import config
 import numpy as np
 import os.path
+import datetime
 
-result_name = 'default_hinton'
+result_name = 'default_hinton' + str(datetime.datetime.now())
 
 sn = SmallNorb.from_cache()
 

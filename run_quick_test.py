@@ -5,8 +5,10 @@ import config
 import numpy as np
 import os
 import os.path
+import datetime
 
-result_name = 'quick_test'
+
+result_name = 'quick_test' + str(datetime.datetime.now())
 
 sn = SmallNorb.from_cache()
 
