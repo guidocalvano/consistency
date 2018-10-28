@@ -15,9 +15,9 @@ mcne = MatrixCapsNetEstimator().init(architecture="build_semantic_convolution_ar
 total_processed_examples = 19440000  # = the number of examples necessary to bring the spread loss to .9 more or less
 
 batch_size = 17
-epoch_count = total_processed_examples / sn.training_example_count() # = 600
 
-max_steps = total_processed_examples / batch_size  # = 1143529
+epoch_count = int(total_processed_examples / sn.training_example_count())  # = 600
+max_steps = int(total_processed_examples / batch_size)  # = 1143529
 
 results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config.TF_MODEL_PATH, result_name))
 
