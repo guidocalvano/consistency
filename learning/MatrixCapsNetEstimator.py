@@ -144,7 +144,7 @@ class MatrixCapsNetEstimator:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
             max_steps = batch_count_per_epoch * epoch_count
 
-        estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=save_summary_steps)
+        estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=save_summary_steps, eval_steps=100)
 
         train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
             .shuffle(100000)\
