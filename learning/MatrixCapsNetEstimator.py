@@ -138,7 +138,7 @@ class MatrixCapsNetEstimator:
 
         return train_spec
 
-    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, model_path=config.TF_MODEL_PATH):
+    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, model_path=config.TF_MODEL_PATH):
 
         if max_steps is None:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
@@ -169,13 +169,13 @@ class MatrixCapsNetEstimator:
 
         return test_result, validation_result, test_predictions
 
-    def create_estimator(self, small_norb, model_path, epoch_count=1.0):
+    def create_estimator(self, small_norb, model_path, epoch_count=1.0, save_summary_steps=500):
         total_example_count = small_norb.training_example_count() * epoch_count
 
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=20,  # Retain the 20 most recent checkpoints.
-            save_summary_steps=500  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            save_summary_steps=save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
         )
 
         estimator = tf.estimator.Estimator(
