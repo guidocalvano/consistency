@@ -138,13 +138,13 @@ class MatrixCapsNetEstimator:
 
         return train_spec
 
-    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, model_path=config.TF_MODEL_PATH):
+    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, eval_steps=100, model_path=config.TF_MODEL_PATH):
 
         if max_steps is None:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
             max_steps = batch_count_per_epoch * epoch_count
 
-        estimator = self.create_estimator(small_norb, model_path, epoch_count)
+        estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=save_summary_steps)
 
         train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
             .shuffle(100000)\
@@ -154,7 +154,10 @@ class MatrixCapsNetEstimator:
         test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
 
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
-        eval_spec = tf.estimator.EvalSpec(input_fn=validation_fn)
+        eval_spec = tf.estimator.EvalSpec(
+            input_fn=validation_fn,
+            steps=eval_steps
+        )
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
         print("training complete")
