@@ -36,9 +36,22 @@ class MatrixCapsNetEstimator:
     ):
         return MatrixCapsNetEstimator.spread_loss(correct_one_hot, predicted_one_hot, params["margin"])
 
-    def init(self, loss_fn=spread_loss_adapter.__func__, architecture="build_default_architecture"):
+    def init(self,
+             loss_fn=spread_loss_adapter.__func__,
+             architecture="build_default_architecture",
+             initialization=None,
+             regularization=None,
+             save_summary_steps=500,
+             eval_steps=100
+        ):
         self.loss_fn = loss_fn
         self.architecture = architecture
+        self.inialization = initialization
+        self.regularization = regularization
+
+        self.save_summary_steps = save_summary_steps
+        self.eval_steps = eval_steps
+
         return self
 
     @staticmethod
@@ -65,6 +78,12 @@ class MatrixCapsNetEstimator:
         routing_state = None
 
         mcn = MatrixCapsNet()
+
+        if self.inialization:
+            mcn.set_init_options(self.inialization)
+
+        if self.regularization:
+            mcn.set_regularization(self.regularization)
 
         network_output, reset_routing_configuration_op, regularization_loss = \
             getattr(mcn, self.architecture)(examples, iteration_count, routing_state)
@@ -105,7 +124,7 @@ class MatrixCapsNetEstimator:
         # Create training op.
         assert mode == tf.estimator.ModeKeys.TRAIN
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+        optimizer = tf.train.AdamOptimizer()
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         grads = optimizer.compute_gradients(loss)
@@ -144,7 +163,7 @@ class MatrixCapsNetEstimator:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
             max_steps = batch_count_per_epoch * epoch_count
 
-        estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=save_summary_steps)
+        estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=self.save_summary_steps)
 
         train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
             .shuffle(100000)\
@@ -156,7 +175,7 @@ class MatrixCapsNetEstimator:
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
         eval_spec = tf.estimator.EvalSpec(
             input_fn=validation_fn,
-            steps=eval_steps
+            steps=self.eval_steps
         )
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
@@ -178,7 +197,7 @@ class MatrixCapsNetEstimator:
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=20,  # Retain the 20 most recent checkpoints.
-            save_summary_steps=save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            save_summary_steps=self.save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
         )
 
         estimator = tf.estimator.Estimator(

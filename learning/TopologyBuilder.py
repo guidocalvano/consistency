@@ -4,7 +4,7 @@ import sys
 
 class TopologyBuilder:
 
-    def init(self):
+    def init(self, pose_width=4, pose_height=4):
 
         self.children_shape = []
         self.child_index_dimension_count = 0
@@ -17,6 +17,9 @@ class TopologyBuilder:
         self.shared_weights_kernel = []
 
         self.is_axial_system = False
+
+        self.pose_width = pose_width
+        self.pose_height = pose_height
 
         return self
 
@@ -70,7 +73,7 @@ class TopologyBuilder:
         self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[0])
         self.add_convolution(np.arange(kernel_size), np.array([0]), kernels_share_weights, parents_share_weights, coordinate_addition_targets[1])
 
-    def finish(self):
+    def finish(self, initialization_options):
 
         self.weight_tiling = self._construct_weight_tiling()
         self.weight_shape  = self._construct_weight_shape()
@@ -81,6 +84,8 @@ class TopologyBuilder:
 
         self.child_parent_kernel_mapping = forward_edge_list
         self.parent_kernel_child_mapping = reverse_edge_list
+
+        self.add_initializer(initialization_options)
 
 
     # interface requirement
@@ -212,15 +217,61 @@ class TopologyBuilder:
 
         return kernel_mapped_slices
 
-    def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
+    def add_initializer(self, options):
+        if options["type"] == "xavier":
+            self.weight_initializer = self.build_xavier_init(options)
+            return
 
-        complete_weight_shape = [1] + self.weight_shape + [pose_width, pose_height - self.is_axial_system]
+        if options["type"] == "identity":
+            self.weight_initializer = self.build_identity_init(options)
+            return
 
-        input_count_per_node = np.product(self.kernel_shape())
+        if options["type"] == "normal":
+            self.weight_initializer = self.build_truncated_normal_init(options)
+            return
+
+        assert(False, 'initialization method undefined')
+
+    def build_xavier_init(self, options):
+
+        input_count_per_node = 1
+        if "kernel" in options and options["kernel"]:
+            input_count_per_node =  input_count_per_node * np.product(self.kernel_shape())
+
+        if "matrix" in options and options["matrix"]:  # xavier_init_matrix or xavier_init_kernel_and_matrix
+            # @TODO: perhaps height should always be passed first to follow the row metaphor for index 0
+            input_count_per_node = input_count_per_node * self.pose_width
+
         #@TODO: Make the standard deviation take into account the number of outputs per node
         xavierish_standard_deviation = np.sqrt(1.0 / input_count_per_node)  # -ish because technically xavier init is for tanh not sigmoid
 
-        weights = tf.Variable(tf.truncated_normal(complete_weight_shape, stddev=xavierish_standard_deviation),
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=xavierish_standard_deviation)
+
+    def build_identity_init(self, options):
+        noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"])
+
+        eye = tf.eye(self.pose_width, self.pose_height - self.is_axial_system)
+
+        eye_shape = np.ones([len(noise.get_shape().as_list())])
+        eye_shape[[-2, -1]] =  eye.get_shape().as_list()
+
+        broadcastable_eye = tf.reshape(eye, eye_shape)
+
+        return noise * (broadcastable_eye - 1.0) + broadcastable_eye
+
+    def build_truncated_normal_init(self, options):
+
+        next_std = options["deviation"].pop(0)
+
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=next_std)
+
+
+    def complete_weight_shape(self):
+        return [1] + self.weight_shape + [self.pose_width, self.pose_height - self.is_axial_system]
+
+    def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
+
+        weights = tf.Variable(self.weight_initializer,
                               dtype=tf.float32, name='pose_transform_weights')
 
         tf.summary.histogram('pose_transform_weights', weights)

@@ -228,7 +228,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
         aggregating_topology = TopologyBuilder().init()
         aggregating_topology.add_aggregation(primary_capsules_B[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
         aggregating_topology.add_dense_connection(primary_capsules_B[0].get_shape().as_list()[3], 5)
-        aggregating_topology.finish()
+        aggregating_topology.finish({
+            "type": "identity",
+            "uniform": .03
+        })
 
         aggregating_capsule_layer = mcn.build_matrix_caps(
             primary_capsules_B,
@@ -296,7 +299,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         topology = TopologyBuilder().init()
         topology.add_dense_connection(child_count, parent_count)
-        topology.finish()
+        topology.finish({
+            "type": "normal",
+            "deviation": [1.0]
+        })
 
         data = np.random.random([batch_size, child_count, parent_count, 1])
         data[0,0,0,0] = 1.0
@@ -381,7 +387,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         topology = TopologyBuilder().init()
         topology.add_dense_connection(child_count, parent_count)
-        topology.finish()
+        topology.finish({
+            "type": "identity",
+            "uniform": 0.3
+        })
 
         parent_activations = tf.Variable(np.random.random([batch_size, 1, parent_count, 1]), dtype=tf.float32)
         potential_pose_vectors = tf.Variable(
@@ -416,7 +425,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         topology = TopologyBuilder().init()
         topology.add_dense_connection(child_count, parent_count)
-        topology.finish()
+        topology.finish({
+            "type": "xavier",
+            "kernel": True
+        })
 
         child_parent_assignment_weights = tf.Variable(np.random.random([batch_size, child_count, parent_count, 1]), dtype=tf.float32)
         child_activations  = tf.Variable(np.random.random([batch_size, child_count, 1, 1]), dtype=tf.float32)
@@ -470,7 +482,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
         topology = TopologyBuilder().init()
         topology.add_spatial_convolution(spatial_shape, 3, 1)
         topology.add_dense_connection(input_feature_count, output_feature_count)
-        topology.finish()
+        topology.finish({
+            "type": "xavier",
+            "kernel": True
+        })
 
         linear_kernel_linear_parent_shape = [batch_size, topology.linear_kernel_shape(), topology.linear_parent_shape()]
         child_activations_lklp   = np.random.random( linear_kernel_linear_parent_shape + [1])
@@ -511,7 +526,10 @@ class TestMatrixCapsNet(tf.test.TestCase):
         topology = TopologyBuilder().init()
         topology.add_spatial_convolution(spatial_shape, 3, 1)
         topology.add_dense_connection(input_feature_count, output_feature_count)
-        topology.finish()
+        topology.finish({
+            "type": "xavier",
+            "matrix": True
+        })
 
         linear_kernel_linear_parent_shape = [batch_size, topology.linear_kernel_shape(), topology.linear_parent_shape()]
         child_activations_lklp   = np.random.random( linear_kernel_linear_parent_shape + [1])
@@ -554,8 +572,11 @@ class TestMatrixCapsNet(tf.test.TestCase):
         topology = TopologyBuilder().init()
         topology.add_spatial_convolution(spatial_shape, 3, 1)
         topology.add_dense_connection(input_feature_count, output_feature_count)
-        topology.finish()
 
+        topology.finish({
+            "type": "xavier",
+            "kernel": True
+        })
         mock_activations   = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 1]))
         mock_pose_matrices = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 4, 4]))
 

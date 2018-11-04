@@ -155,7 +155,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_spatial_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
 
         # assert internal state is correct
@@ -202,7 +206,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_spatial_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert that each child has the correct number of parents
         self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[0, 1]]), axis=1)) == 1)
@@ -228,7 +236,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_spatial_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, pose_row_count, pose_column_count])
@@ -286,7 +298,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_spatial_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, pose_row_count, pose_column_count])
@@ -374,7 +390,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_semantic_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert internal state is correct
         self.assertTrue(self.topology.weight_shape == [kernel_row_count, kernel_column_count, parent_row_count, parent_column_count], "weights must have the correct shape")
@@ -423,7 +443,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_semantic_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[0, 0]]), axis=1)) == 4)  # due to wrapping 4
         self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[0, 1]]), axis=1)) == 2)  # due to wrapping 2
@@ -449,7 +473,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_semantic_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, pose_row_count, pose_column_count])
@@ -514,7 +542,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_semantic_convolution([child_row_count, child_column_count], kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, pose_row_count, pose_column_count])
@@ -600,7 +632,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
 
         # assert internal state is correct
@@ -646,7 +682,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert that each child has the correct number of parents; aggregations have only 1 parent by definition unless another convolution increases the number of parents
         self.assertTrue(np.sum(np.all(self.topology.child_parent_kernel_mapping[:, :2] == np.array([[0, 1]]), axis=1)) == 1)
@@ -671,7 +711,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, pose_row_count, pose_column_count])
@@ -716,7 +760,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
 
         # test if input is mapped to kernel parent space correctly
@@ -800,7 +848,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_dense_connection(input_count, output_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert internal state is correct
         self.assertTrue(self.topology.weight_shape == [input_count, output_count], "weights must have the correct shape")
@@ -841,7 +893,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_dense_connection(input_count, output_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert that each child has the correct number of parents
         self.assertTrue(np.sum(self.topology.child_parent_kernel_mapping[:, 0] == 0) == output_count, "child is connected to output_count outputs")
@@ -857,7 +913,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_dense_connection(input_count, output_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, input_count, pose_row_count, pose_column_count])
@@ -898,7 +958,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         # setup tested topology
         self.topology.add_dense_connection(input_count, output_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, input_count, pose_row_count, pose_column_count])
@@ -963,7 +1027,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
         self.topology.add_dense_connection(child_feature_count, parent_feature_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # assert internal state is correct
         self.assertTrue(self.topology.weight_shape == [1, 1, kernel_feature_count, 1, 1, parent_feature_count], "weights must have the correct shape")
@@ -1016,7 +1084,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
         self.topology.add_dense_connection(child_feature_count, parent_feature_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         feature_connection_count = child_feature_count * parent_feature_count
 
@@ -1044,7 +1116,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
         self.topology.add_dense_connection(child_feature_count, parent_feature_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         feature_connection_count = child_feature_count * parent_feature_count
 
@@ -1107,7 +1183,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.add_aggregation(kernel_size, [[3, 0], [3, 1]])
         self.topology.add_dense_connection(child_feature_count, parent_feature_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         feature_connection_count = child_feature_count * parent_feature_count
 
@@ -1181,7 +1261,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.add_spatial_convolution([child_row_count, child_column_count], spatial_kernel_size, stride)
         self.topology.add_semantic_convolution([child_feature_row_count, child_feature_column_count], semantic_kernel_size, stride)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         # test if input is mapped to kernel parent space correctly
         input_template = np.zeros([batch_size, child_row_count, child_column_count, child_feature_row_count, child_feature_column_count, pose_row_count, pose_column_count])
@@ -1364,7 +1448,11 @@ class TestTopologyBuilder(tf.test.TestCase):
         self.topology.set_is_axial_system(True)
         self.topology.add_dense_connection(input_count, output_count)
 
-        self.topology.finish()
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
 
         axial_system_input = np.random.random([batch_size, input_count, pose_row_count, pose_column_count])
         axial_system_input[:, :, :, 3] = np.array([0.0, 0.0, 0.0, 1.0])
