@@ -5,7 +5,7 @@ import dill as pickle
 import numpy as np
 import os.path
 import datetime
-import Configuration
+from Configuration import Configuration
 import sys
 
 
