@@ -11,7 +11,6 @@ def run(argv):
     # so both should be changed at the same time
     iteration_count = 3
 
-    result_name = config.parse_arguments()
     sn = SmallNorb.from_cache()
 
     constants = InitializationOptimizer.optimize_standard_deviations(config.config["architecture"], sn, iteration_count, config["batch_size"])
