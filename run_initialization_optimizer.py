@@ -13,7 +13,7 @@ def run(argv):
 
     sn = SmallNorb.from_cache()
 
-    constants = InitializationOptimizer.optimize_standard_deviations(config.config["architecture"], sn, iteration_count, config["batch_size"])
+    constants = InitializationOptimizer.optimize_standard_deviations(config.config["architecture"], sn, iteration_count, config.config["batch_size"])
 
     with open(argv[2], 'w') as f:
         json.dump(constants, f)
