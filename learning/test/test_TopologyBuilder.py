@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from learning.TopologyBuilder import TopologyBuilder
+from learning.TopologyBuilder import UnknownInitializerException
 
 
 class TestTopologyBuilder(tf.test.TestCase):
@@ -58,15 +59,6 @@ class TestTopologyBuilder(tf.test.TestCase):
         #   data not extracted correctly from self.added_coordinates
         #   coordinates not broadcasted to the same cell, correct cell
         #   wrong coordinates broadcasted
-
-        pass
-
-
-    def map_weights_to_parent_kernels(self):
-        # Possible ramifications: low
-        # semantic errors could lead to algorithm failure
-        # risks:
-        #   weights are not mapped correctly
 
         pass
 
@@ -1465,3 +1457,186 @@ class TestTopologyBuilder(tf.test.TestCase):
             output_values = sess.run(output)
 
             self.assertTrue(np.all(output_values[:, :, :, :, 3] == np.array([0.0, 0.0, 0.0, 1.0])), "output must remain axial system" )
+
+    def test_build_xavier_kernel_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 200
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": False
+        })
+
+        output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            output_value_list = output_values.reshape(-1)
+
+            self.assertTrue(np.abs(np.mean(output_value_list)) < .1)
+            self.assertTrue(np.abs(np.std(output_value_list)  - np.sqrt(1 / input_count)) < .1)
+            self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+    def test_build_xavier_matrix_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 200
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": False,
+            "matrix": True
+        })
+
+        output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            output_value_list = output_values.reshape(-1)
+
+            self.assertTrue(np.abs(np.mean(output_value_list)) < .1)
+            self.assertTrue(np.abs(np.std(output_value_list)  - .5) < .1)
+            self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+    def test_build_xavier_matrix_kernel_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 200
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
+
+        output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            output_value_list = output_values.reshape(-1)
+
+            self.assertTrue(np.abs(np.mean(output_value_list)) < .1)
+            self.assertTrue(np.abs(np.std(output_value_list) - np.sqrt(1 / (input_count * 4))) < .1)
+            self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+    def test_build_normal_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 20
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        normal_options = {
+            "type": "normal",
+            "deviation": [.4, .1]
+        }
+
+        self.topology.finish(normal_options)
+
+        self.assertTrue(normal_options["deviation"] == [.1])
+
+        output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            output_value_list = output_values.reshape(-1)
+
+            self.assertTrue(np.abs(np.mean(output_value_list)) < .1)
+            self.assertTrue(np.abs(np.std(output_value_list)  -.4) < .1)
+            self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+    def test_build_identity_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 10
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        self.topology.finish({
+            "type": "identity",
+            "uniform": .5
+        })
+
+        output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+
+        with self.test_session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            output_values = sess.run(output)
+
+            output_matrix_list = output_values.reshape(-1, 4, 4)
+
+            self.assertTrue(np.all(output_matrix_list[:, np.eye(4).astype('bool')] == 1))
+
+            random_values = output_matrix_list[:, ~np.eye(4).astype('bool')]
+
+            self.assertTrue(np.abs(np.mean(random_values)) < .1 )
+            self.assertTrue(np.abs(np.mean(np.abs(random_values)) - 0.25) < .1)
+            self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+    def test_build_wrong_init(self):
+        input_count, output_count = 2, 3
+        batch_size = 10
+
+        pose_row_count = 4
+        pose_column_count = 4
+
+        tiled_weight_shape = [batch_size, input_count, output_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_dense_connection(input_count, output_count)
+
+        try:
+            self.topology.finish({
+                "type": "jhfgjhgf",
+                "uniform": .5
+            })
+            self.assertTrue(False)
+        except UnknownInitializerException as e:
+            self.assertTrue(True)
+

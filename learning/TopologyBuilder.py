@@ -2,6 +2,10 @@ import numpy as np
 import tensorflow as tf
 import sys
 
+
+class UnknownInitializerException(Exception):
+    pass
+
 class TopologyBuilder:
 
     def init(self, pose_width=4, pose_height=4):
@@ -217,6 +221,7 @@ class TopologyBuilder:
 
         return kernel_mapped_slices
 
+
     def add_initializer(self, options):
         if options["type"] == "xavier":
             self.weight_initializer = self.build_xavier_init(options)
@@ -230,13 +235,13 @@ class TopologyBuilder:
             self.weight_initializer = self.build_truncated_normal_init(options)
             return
 
-        assert(False, 'initialization method undefined')
+        raise UnknownInitializerException()
 
     def build_xavier_init(self, options):
 
         input_count_per_node = 1
         if "kernel" in options and options["kernel"]:
-            input_count_per_node =  input_count_per_node * np.product(self.kernel_shape())
+            input_count_per_node = input_count_per_node * np.product(self.kernel_shape())
 
         if "matrix" in options and options["matrix"]:  # xavier_init_matrix or xavier_init_kernel_and_matrix
             # @TODO: perhaps height should always be passed first to follow the row metaphor for index 0

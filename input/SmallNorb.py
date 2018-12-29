@@ -367,6 +367,19 @@ class SmallNorb:
 
         return (input_data, output_data)
 
+    def randomly_reduce_training_set(self, count):
+
+        index_sequence = np.arange(self.training["examples"].shape[0])
+        np.random.shuffle(index_sequence)
+
+        self.training["examples"] = self.training["examples"][index_sequence]
+        self.training["labels"] = self.training["labels"][index_sequence]
+        self.training["meta"] = self.training["meta"][index_sequence]
+
+        self.training["examples"] = self.training["examples"][:count]
+        self.training["labels"] = self.training["labels"][:count]
+        self.training["meta"] = self.training["meta"][:count]
+
     def default_validation_set(self):
 
         input_data = self.default_preprocessed_test_input(tf.constant(self.validation["examples"]))

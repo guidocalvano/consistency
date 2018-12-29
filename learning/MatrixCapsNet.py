@@ -42,6 +42,8 @@ class MatrixCapsNet:
             "axial": False
         }
 
+        self.activation_layers = []
+
     def set_init_options(self, init_options):
         self.weight_init_options = init_options
 
@@ -60,11 +62,20 @@ class MatrixCapsNet:
             final_steepness_lambda = tf.constant(.01)
 
             with tf.name_scope('layerA') as scope1:
-                convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+                convolution_layer_A = self.build_encoding_convolution(
+                    input_layer,
+                    5,
+                    texture_patches_A,
+                    output_count=32.0
+                )
 
             with tf.name_scope('layerB') as scope2:
                 # number of capsules is defined by number of texture patches
-                primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=self.regularization["axial"])
+                primary_capsule_layer_B = self.build_primary_matrix_caps(
+                    convolution_layer_A,
+                    is_axial_system=self.regularization["axial"],
+                    output_count=(1.5 * 1.5 * capsule_count_C)  # average kernel size C squared * capsule_count_C
+                )
 
             with tf.name_scope('layerC') as scope3:
                 c_topology = TopologyBuilder().init()
@@ -495,9 +506,10 @@ class MatrixCapsNet:
         normal_layer = tf.reshape(input_layer, shape=normal_shape, name='convolutional_to_normal_layer')
         return normal_layer
 
-    def build_encoding_convolution(self, input_layer, kernel_size, filter_count):
+    def build_encoding_convolution(self, input_layer, kernel_size, filter_count, output_count=0.0):
         #@TODO: Make the standard deviation take into account the number of outputs per node
-        xavier_stddev = np.sqrt(1.0 / (kernel_size * kernel_size))
+        input_count = kernel_size * kernel_size  # do not multiply input by .5 because input is not produced by a relu
+        xavier_stddev = np.sqrt(1.0 / (input_count + output_count * .5))  # do multiply output by .5 because the relu halves output
         output_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=kernel_size,
@@ -534,7 +546,7 @@ class MatrixCapsNet:
     #     return reconstruction_prediction_layer, reconstruction_loss
 
     def build_cast_conv_to_pose_layer(self, input_layer, input_filter_count,
-                                  simplify_to_axial_system=False):
+                                  simplify_to_axial_system=False, output_count=0.0):
 
         elements_per_pose = 16
         pose_axis_element_count = 4
@@ -543,9 +555,19 @@ class MatrixCapsNet:
             elements_per_pose = 12
             pose_axis_element_count = 3
 
+        # output of pose layer goes through linear activation
+        # so now halving of stdev not necessary for output, but input did go through relu so must be halved
+        # Also, outputs are edge matrices that can be seen as neurons in a 4 weight x 4 neuron layer,
+        # so each number of outputs must be multiplied by 4
+        target_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count * 4.0))
+
+        # if "deviation" in self.weight_init_options:
+        #     target_stddev = self.weight_init_options["deviation"].pop(0)
+
         pose_element_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
+            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=target_stddev),
             filters=input_filter_count * elements_per_pose,
             activation=None,
             name='extract_poses'
@@ -588,11 +610,14 @@ class MatrixCapsNet:
 
         return axial_system_tensor
 
-    def build_cast_conv_to_activation_layer(self, input_layer, input_filter_count):
+    def build_cast_conv_to_activation_layer(self, input_layer, input_filter_count, output_count=0.0):
+
+        xavier_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count))
 
         raw_activation_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
+            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=xavier_stddev),
             filters=input_filter_count,
             activation=tf.nn.sigmoid,
             name='extract_activations'
@@ -607,17 +632,19 @@ class MatrixCapsNet:
 
         return activation_layer
 
-    def build_primary_matrix_caps(self, input_layer, is_axial_system=False):
+    def build_primary_matrix_caps(self, input_layer, is_axial_system=False, output_count=0.0):
 
         with tf.name_scope('primary_matrix_capsules') as scope0:
 
             filter_axis = 3
 
-            input_filter_count = input_layer.get_shape()[filter_axis]
+            input_filter_count = int(input_layer.get_shape().as_list()[filter_axis])
 
-            activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count)
-            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system)
+            activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count, output_count=output_count)
+            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system, output_count=output_count)
 
+            tf.summary.histogram('primary caps activations', activation_layer)
+            # self.activation_layers.append(activation_layer)
         return [activation_layer, pose_layer]
 
     def build_convolutional_capsule_layer(self,
@@ -1068,6 +1095,8 @@ class MatrixCapsNet:
             tf.summary.histogram('activations', mapped_parent_as_child_activations)
             tf.summary.histogram('poses', mapped_parent_as_child_pose_matrices)
             tf.summary.histogram('poses_determinant', tf.linalg.det(mapped_parent_as_child_pose_matrices))
+
+        self.activation_layers.append(mapped_parent_as_child_activations)
 
         return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 

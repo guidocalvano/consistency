@@ -14,13 +14,13 @@ sn = SmallNorb.from_cache()
 
 sn.reduce_to_two_examples(.3, .3)
 
-mcne = MatrixCapsNetEstimator().init()
+mcne = MatrixCapsNetEstimator().init(save_summary_steps=10, eval_steps=50)
 
 batch_size = 17
 epoch_count = 50
 max_steps = 250
 
-results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, save_summary_steps=10, eval_steps=50, model_path=os.path.join(config.TF_MODEL_PATH, result_name))
+results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config.TF_MODEL_PATH, result_name))
 
 result_file_path = os.path.join(config.OUTPUT_PATH, result_name + '.dill')
 

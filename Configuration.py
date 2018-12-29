@@ -7,15 +7,16 @@ class Configuration:
     Singleton = None
 
     @staticmethod
-    def get():
+    def load(filePath='./defaults.json'):
         if Configuration.Singleton is None:
-            Configuration.Singleton = Configuration()
+            Configuration.Singleton = Configuration(json.load(open(filePath, 'r')), filePath)
 
         return Configuration.Singleton
 
-    def __init__(self, filePath='./defaults.json'):
+    def __init__(self, config, filePath=None):
         self.filePath = filePath
-        self.config = json.load(open(self.filePath, 'r'))
+
+        self.config = config
         self.pathSeparator = '/'
 
         self.changesToDefault = {}
@@ -24,39 +25,31 @@ class Configuration:
         self.config_name_arg_separator = '#'
 
     def parseArguments(self, args=None):
-        args = args if args is not None else sys.argv
+        args = args if args is not None else sys.argv[2:]
 
         if len(args) > 1:
-            self.config_name = args[1:].join(self.config_name_arg_separator)
+            self.config_name = self.config_name_arg_separator.join([str(value) for value in args])
 
         pathToType = self.getPathToTypeDictionary()
 
         parser = argparse.ArgumentParser(add_help=False)
 
-        parser.add_argument('--save', nargs=1, default='defaults.json')
-        parser.add_argument('--help', '-h', action='store_true')
+        # parser.add_argument('--help', '-h', action='store_true')
 
         for path in pathToType.keys():
-            parser.add_argument('--' + path, pathToType[path])
+            parser.add_argument('--' + path, type=pathToType[path])
 
         parsed = parser.parse_args(args)
 
-        target_file_path = parsed.save[0]
-        must_help = parsed.help
+        # must_help = parsed.help
+        #
+        # if must_help:
+        #     print(open(self.filePath, 'r').read())
+        #     exit()
+        # else:
+        #     del parsed.help
 
-        if target_file_path:
-            del parsed.save
-
-        if must_help:
-            print(open(self.filePath, 'r').read())
-            exit()
-
-        self.apply_arguments(parsed)
-
-        if target_file_path:
-            self.save(target_file_path)
-            print("saved updated config")
-            exit()
+        self.apply_arguments(vars(parsed))
 
         return self.config_name
 
@@ -74,7 +67,10 @@ class Configuration:
             return
 
         for key in config.keys():
-            self.getPathToTypeDictionary(config, pathOffset + self.pathSeparator + key, pathToTypeDictionary)
+            if len(pathOffset) > 0:
+                pathOffset = pathOffset + self.pathSeparator
+
+            self.getPathToTypeDictionary(config[key], pathOffset + key, pathToTypeDictionary)
 
         return pathToTypeDictionary
 
@@ -85,7 +81,7 @@ class Configuration:
 
         pathNodes = path.split(self.pathSeparator)
 
-        for i in range(len(pathNodes) - 2):
+        for i in range(len(pathNodes) - 1):
             nextNode = pathNodes[i]
 
             if nextNode not in changesCursor:
@@ -94,12 +90,11 @@ class Configuration:
             cursor = cursor[nextNode]
             changesCursor = changesCursor[nextNode]
 
-        cursor[pathNodes[-2]] = pathNodes[-1]
-        changesCursor[pathNodes[-2]] = pathNodes[-1]
-
-
+        cursor[pathNodes[-1]] = value
+        changesCursor[pathNodes[-1]] = value
 
     def apply_arguments(self, parsed):
 
         for path in parsed.keys():
-            self.setPath(path, parsed[path])
+            if parsed[path] is not None:
+                self.setPath(path, parsed[path])

@@ -85,6 +85,7 @@ class MatrixCapsNetEstimator:
         if self.regularization:
             mcn.set_regularization(self.regularization)
 
+        # GET ARCHITECTURE FROM MATRIX CAPSNET
         network_output, reset_routing_configuration_op, regularization_loss = \
             getattr(mcn, self.architecture)(examples, iteration_count, routing_state)
 

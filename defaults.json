@@ -15,7 +15,7 @@
     "matrix": true,
     "kernel":false,
 
-    "deviation": [0.3], // for normal
+    "deviation": [0.3], // for normal, .7405 is stddev for mean abs eigenvalue of about 1.0, .76 is for mean abs det of about 1.0
     "uniform": 0.3 // for identity init
   },
 
