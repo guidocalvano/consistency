@@ -301,7 +301,7 @@ class TopologyBuilder:
 
             flattened_weights = tf.concat([flattened_weights, flattened_concatenatable_vector_type_column], axis=-1)
 
-            weights = tf.reshape(flattened_weights, weights.shape[:-2] + [self.pose_width, self.pose_height])
+            weights = tf.reshape(flattened_weights, weights.shape[:-2].as_list() + [self.pose_width, self.pose_height])
 
             # weights = tf.concat([weights, concatenatable_vector_type_column], axis=-1)
 
