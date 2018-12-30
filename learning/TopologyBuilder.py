@@ -8,7 +8,7 @@ class UnknownInitializerException(Exception):
 
 class TopologyBuilder:
 
-    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=4.0):
+    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=8.0):
 
         self.children_shape = []
         self.child_index_dimension_count = 0
@@ -173,7 +173,7 @@ class TopologyBuilder:
             # compute the values that need to be inserted
             coordinate_count = potential_parent_poses_map_shape[coordinate_source_index]
             coordinate_range = np.arange(coordinate_count)
-            scaled_coordinate_range = self.coordinate_addition_scale * coordinate_range / (coordinate_count - 1)
+            scaled_coordinate_range = -.5 * self.coordinate_addition_scale + self.coordinate_addition_scale * coordinate_range / (coordinate_count - 1)
 
             # create shape of template matrix for the coordinates that must be added (not broadcastable yet)
             pose_matrices_with_coordinates_shape = [coordinate_count, pose_width, pose_height]
