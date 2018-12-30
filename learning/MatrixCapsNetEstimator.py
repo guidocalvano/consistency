@@ -108,7 +108,7 @@ class MatrixCapsNetEstimator:
         loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
             "margin": spread_loss_margin})
 
-        if regularization_loss is not None: loss = loss + regularization_loss
+        if regularization_loss is not None: loss = loss + regularization_loss * self.regularization['axial']
 
         # Compute evaluation metrics.
         accuracy = tf.metrics.accuracy(labels=labels,

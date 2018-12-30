@@ -287,7 +287,7 @@ class MatrixCapsNet:
                 # number of capsules is defined by number of texture patches
                 primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=is_axial)
 
-                semantically_convolved_input_shape = primary_capsule_layer_B[0].get_shape().as_list()[1:3] + [8, 8]
+                semantically_convolved_input_shape = [-1] + primary_capsule_layer_B[0].get_shape().as_list()[1:3] + [8, 8]
 
                 semantically_convolved_activation_shape = semantically_convolved_input_shape + [1]
                 semantically_convolved_pose_shape = semantically_convolved_input_shape + [4, 4]
@@ -305,7 +305,7 @@ class MatrixCapsNet:
                 c_topology.finish(self.weight_init_options)
 
                 conv_caps_layer_C = self.build_matrix_caps(
-                    primary_capsule_layer_B,
+                    semantically_convolved_primary_capsule_layer_B,
                     c_topology,
                     final_steepness_lambda,
                     iteration_count,
@@ -327,7 +327,7 @@ class MatrixCapsNet:
                     routing_state
                 )
 
-                semantically_collapsed_layer_D_shape = conv_caps_layer_D[0].get_shape().as_list()[0:3] + \
+                semantically_collapsed_layer_D_shape = [-1] + conv_caps_layer_D[0].get_shape().as_list()[1:3] + \
                                                        [np.prod(conv_caps_layer_C[0].get_shape().as_list()[3:5])]
 
                 semantically_collapsed_layer_D_activation_shape = semantically_collapsed_layer_D_shape + [1]
@@ -348,7 +348,7 @@ class MatrixCapsNet:
                 aggregating_topology.finish(self.weight_init_options)
 
                 aggregating_capsule_layer = self.build_matrix_caps(
-                    conv_caps_layer_D,
+                    semantically_collapsed_layer_D,
                     aggregating_topology,
                     final_steepness_lambda,
                     iteration_count,
