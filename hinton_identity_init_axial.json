@@ -1,0 +1,21 @@
+{
+  "example_count": 19440000,
+  "batch_size": 17,
+  "save_summary_steps": 500,
+  "eval_steps": 100,
+
+  "reduce_to_two_examples": false,
+
+  "architecture": "build_default_architecture",
+  "initialization": {
+    "type": "identity",
+    "uniform": 0.3
+  },
+
+  "regularization": {
+    "axial": 0.01
+  },
+
+  "output_path": "output/",
+  "tf_model_dir": "tf_models/"
+}
