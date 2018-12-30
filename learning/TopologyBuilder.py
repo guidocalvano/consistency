@@ -292,12 +292,18 @@ class TopologyBuilder:
             tilable_vector_type_shape = [1] * len(tiling_vector_type_shape)
             tilable_vector_type_shape[-2] = pose_width
 
-
             vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float32)
 
             concatenatable_vector_type_column = tf.tile(tf.reshape(vector_type_column, tilable_vector_type_shape), tiling_vector_type_shape)
 
-            weights = tf.concat([weights, concatenatable_vector_type_column], axis=-1)
+            flattened_weights = tf.reshape(weights, [-1, 4, 3])
+            flattened_concatenatable_vector_type_column = tf.reshape(concatenatable_vector_type_column, [-1, 4, 1])
+
+            flattened_weights = tf.concat([flattened_weights, flattened_concatenatable_vector_type_column], axis=-1)
+
+            weights = tf.reshape(flattened_weights, weights.shape[:-2] + [self.pose_width, self.pose_height])
+
+            # weights = tf.concat([weights, concatenatable_vector_type_column], axis=-1)
 
         kernel_tile_dimensions = [batch_size] + self.weight_tiling + [1, 1]
 
