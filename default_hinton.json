@@ -8,7 +8,7 @@
   "architecture": "build_default_architecture",
   "initialization": {
     "type": "normal",
-    "deviation": [8.978162705039178, 3.5500487754429324, 20.085536923187664]
+    "deviation": []
   },
 
   "regularization": {

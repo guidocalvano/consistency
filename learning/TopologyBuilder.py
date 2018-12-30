@@ -255,7 +255,7 @@ class TopologyBuilder:
     def build_identity_init(self, options):
         noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"])
 
-        eye = tf.eye(self.pose_width, self.pose_height - self.is_axial_system)
+        eye = tf.eye(self.pose_width, self.pose_height - int(self.is_axial_system))
 
         eye_shape = np.ones([len(noise.get_shape().as_list())])
         eye_shape[[-2, -1]] =  eye.get_shape().as_list()
@@ -272,7 +272,7 @@ class TopologyBuilder:
 
 
     def complete_weight_shape(self):
-        return [1] + self.weight_shape + [self.pose_width, self.pose_height - self.is_axial_system]
+        return [1] + self.weight_shape + [self.pose_width, self.pose_height - int(self.is_axial_system)]
 
     def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
 
