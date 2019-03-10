@@ -176,7 +176,8 @@ class MatrixCapsNetEstimator:
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
         eval_spec = tf.estimator.EvalSpec(
             input_fn=validation_fn,
-            steps=self.eval_steps
+            steps=self.eval_steps,
+            throttle_secs=1200
         )
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
@@ -197,7 +198,7 @@ class MatrixCapsNetEstimator:
 
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
-            keep_checkpoint_max=20,  # Retain the 20 most recent checkpoints.
+            keep_checkpoint_max=10,  # Retain the 10 most recent checkpoints.
             save_summary_steps=self.save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
         )
 

@@ -13,20 +13,22 @@ def run(result_name, config, sn):
     if config["reduce_to_two_examples"]:
         sn.reduce_to_two_examples(.3, .3)
 
-    mcne = MatrixCapsNetEstimator().init(
-        architecture=config["architecture"],
-        initialization=config["initialization"],
-        regularization=config["regularization"],
-        save_summary_steps=config["save_summary_steps"],
-        eval_steps=config["eval_steps"]
-    )
-
     total_processed_examples = config["example_count"]  # = the number of examples necessary to bring the spread loss to .9 more or less
 
     batch_size = config["batch_size"]
 
     epoch_count = int(total_processed_examples / sn.training_example_count())  # = 600
     max_steps = int(total_processed_examples / batch_size)  # = 1143529
+
+    save_summary_steps = max_steps / config["save_summary_count"]
+
+    mcne = MatrixCapsNetEstimator().init(
+        architecture=config["architecture"],
+        initialization=config["initialization"],
+        regularization=config["regularization"],
+        save_summary_steps=save_summary_steps,
+        eval_steps=config["eval_steps"]
+    )
 
     results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config["tf_model_dir"], result_name))
 

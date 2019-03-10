@@ -1,14 +1,11 @@
 {
-  // experiment control
   "example_count": 19440000,
   "batch_size": 17,
-  "save_summary_steps": 500,
-  "eval_steps": 100,
-  // debugging
+  "save_summary_count": 15,
+  "eval_steps": 50,
   "reduce_to_two_examples": false,
 
-  // network configuration
-  "architecture": "build_default_architecture", // build_semantic_convolution_architecture build_simple_architecture
+  "architecture": "build_default_architecture",
 
   "initialization": {
     "type": "xavier",
@@ -17,10 +14,9 @@
   },
 
   "regularization": {
-    "axial": 0.0 // pressure network matrices to remain orthogonal (i.e. orthogonal unit length column vectors)
+    "axial": 0.0
   },
 
-  // paths
   "output_path": "output/",
   "tf_model_dir": "tf_models/"
 }
