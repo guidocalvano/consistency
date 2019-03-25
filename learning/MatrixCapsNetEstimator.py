@@ -59,7 +59,7 @@ class MatrixCapsNetEstimator:
         number_counter = tf.Variable(tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
 
         return tf.cond(is_training,
-                lambda: number_counter.assign(number_counter + next_number, use_locking=True),
+                lambda: number_counter.assign_add(next_number),
                 lambda: number_counter)
 
 
@@ -125,7 +125,7 @@ class MatrixCapsNetEstimator:
         # Create training op.
         assert mode == tf.estimator.ModeKeys.TRAIN
 
-        optimizer = tf.train.AdamOptimizer()
+        optimizer = tf.contrib.estimator.TowerOptimizer(tf.train.AdamOptimizer())
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         grads = optimizer.compute_gradients(loss)
@@ -196,17 +196,14 @@ class MatrixCapsNetEstimator:
     def create_estimator(self, small_norb, model_path, epoch_count=1.0, save_summary_steps=500):
         total_example_count = small_norb.training_example_count() * epoch_count
 
-        distribution = tf.contrib.distribute.MirroredStrategy()
-
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=10,  # Retain the 10 most recent checkpoints.
-            save_summary_steps=self.save_summary_steps,  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
-            train_distribute=distribution
+            save_summary_steps=self.save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
         )
 
         estimator = tf.estimator.Estimator(
-            lambda features, labels, mode, params: self.model_function(features, labels, mode, params),
+            tf.contrib.estimator.replicate_model_fn(lambda features, labels, mode, params: self.model_function(features, labels, mode, params)),
             params={
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
