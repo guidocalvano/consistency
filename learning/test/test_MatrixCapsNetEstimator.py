@@ -6,6 +6,7 @@ import config
 import os
 import shutil
 import sys
+import random
 
 
 class TestMatrixCapsNetEstimator(tf.test.TestCase):
@@ -112,15 +113,18 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
         batch_size = 17
         epoch_count = 2
 
-        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, first_session_max_steps)
+        with tf.variable_scope('something' + str(random.random())) as resource:
+            mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, first_session_max_steps)
 
-        untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+        with tf.variable_scope('something' + str(random.random())) as resource:
+            untrained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
 
         second_session_max_steps = 2
+        with tf.variable_scope('something' + str(random.random())) as resource:
+            mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
 
-        mcne.train(sn, config.TF_DEBUG_MODEL_PATH, batch_size, epoch_count, second_session_max_steps)
-
-        trained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
+        with tf.variable_scope('something' + str(random.random())) as resource:
+            trained_performance = mcne.test(sn, config.TF_DEBUG_MODEL_PATH, batch_size)[0]["accuracy"]
 
         print("untrained performance" + str(untrained_performance))
 

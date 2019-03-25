@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 from learning.TopologyBuilder import TopologyBuilder
 from learning.TopologyBuilder import UnknownInitializerException
+import random
 
 
 class TestTopologyBuilder(tf.test.TestCase):
@@ -9,6 +10,11 @@ class TestTopologyBuilder(tf.test.TestCase):
     def setUp(self):
 
         self.topology = TopologyBuilder().init()
+
+    def run(self, result=None):
+        with tf.variable_scope('something' + str(random.random())) as resource:
+            self.resource = resource
+            super(tf.test.TestCase, self).run(result)
 
     def test_convolution_concatenation(self):
         # Possible ramifications: high

@@ -63,7 +63,7 @@ class MatrixCapsNet:
 
             final_steepness_lambda = tf.constant(.01)
 
-            with tf.name_scope('layerA') as scope1:
+            with tf.variable_scope('layerA') as scope1:
                 convolution_layer_A = self.build_encoding_convolution(
                     input_layer,
                     5,
@@ -71,7 +71,7 @@ class MatrixCapsNet:
                     output_count=32.0
                 )
 
-            with tf.name_scope('layerB') as scope2:
+            with tf.variable_scope('layerB') as scope2:
                 # number of capsules is defined by number of texture patches
                 primary_capsule_layer_B = self.build_primary_matrix_caps(
                     convolution_layer_A,
@@ -79,7 +79,7 @@ class MatrixCapsNet:
                     output_count=(1.5 * 1.5 * capsule_count_C)  # average kernel size C squared * capsule_count_C
                 )
 
-            with tf.name_scope('layerC') as scope3:
+            with tf.variable_scope('layerC') as scope3:
                 c_topology = TopologyBuilder().init()
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
@@ -94,7 +94,7 @@ class MatrixCapsNet:
                     routing_state
                 )
 
-            with tf.name_scope('layerD') as scope3:
+            with tf.variable_scope('layerD') as scope3:
                 d_topology = TopologyBuilder().init()
                 d_topology.set_is_axial_system(is_axial)
                 d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
@@ -109,7 +109,7 @@ class MatrixCapsNet:
                     routing_state
                 )
 
-            with tf.name_scope('layerAggregation') as scope3:
+            with tf.variable_scope('layerAggregation') as scope3:
 
                 aggregating_topology = TopologyBuilder().init()
                 aggregating_topology.set_is_axial_system(is_axial)
@@ -125,7 +125,7 @@ class MatrixCapsNet:
                     routing_state
                 )
 
-            with tf.name_scope('outputFormatting') as scope3:
+            with tf.variable_scope('outputFormatting') as scope3:
 
                 final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
                 final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
@@ -156,33 +156,37 @@ class MatrixCapsNet:
         # number of capsules is defined by number of texture patches
         primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=is_axial)
 
-        c_topology = TopologyBuilder().init()
-        c_topology.set_is_axial_system(is_axial)
-        c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
-        c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
-        c_topology.finish(self.weight_init_options)
+        with tf.variable_scope('layerC') as scope1:
 
-        conv_caps_layer_C = self.build_matrix_caps(
-            primary_capsule_layer_B,
-            c_topology,
-            final_steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+            c_topology = TopologyBuilder().init()
+            c_topology.set_is_axial_system(is_axial)
+            c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+            c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+            c_topology.finish(self.weight_init_options)
 
-        aggregating_topology = TopologyBuilder().init()
-        aggregating_topology.set_is_axial_system(is_axial)
-        aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
-        aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
-        aggregating_topology.finish(self.weight_init_options)
+            conv_caps_layer_C = self.build_matrix_caps(
+                primary_capsule_layer_B,
+                c_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
-        aggregating_capsule_layer = self.build_matrix_caps(
-            conv_caps_layer_C,
-            aggregating_topology,
-            final_steepness_lambda,
-            iteration_count,
-            routing_state
-        )
+        with tf.variable_scope('layerAggregation') as scope1:
+
+            aggregating_topology = TopologyBuilder().init()
+            aggregating_topology.set_is_axial_system(is_axial)
+            aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+            aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+            aggregating_topology.finish(self.weight_init_options)
+
+            aggregating_capsule_layer = self.build_matrix_caps(
+                conv_caps_layer_C,
+                aggregating_topology,
+                final_steepness_lambda,
+                iteration_count,
+                routing_state
+            )
 
         final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
         final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
@@ -280,10 +284,10 @@ class MatrixCapsNet:
 
             final_steepness_lambda = tf.constant(.01)
 
-            with tf.name_scope('layerA') as scope1:
+            with tf.variable_scope('layerA') as scope1:
                 convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
-            with tf.name_scope('layerB') as scope2:
+            with tf.variable_scope('layerB') as scope2:
                 # number of capsules is defined by number of texture patches
                 primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=is_axial)
 
@@ -296,7 +300,7 @@ class MatrixCapsNet:
                     tf.reshape(primary_capsule_layer_B[0], semantically_convolved_activation_shape),
                     tf.reshape(primary_capsule_layer_B[1], semantically_convolved_pose_shape)
                 ]
-            with tf.name_scope('layerC') as scope3:
+            with tf.variable_scope('layerC') as scope3:
 
                 c_topology = TopologyBuilder().init()
                 c_topology.set_is_axial_system(is_axial)
@@ -311,7 +315,7 @@ class MatrixCapsNet:
                     iteration_count,
                     routing_state
                 )
-            with tf.name_scope('layerD') as scope4:
+            with tf.variable_scope('layerD') as scope4:
 
                 d_topology = TopologyBuilder().init()
                 d_topology.set_is_axial_system(is_axial)
@@ -338,7 +342,7 @@ class MatrixCapsNet:
                     tf.reshape(conv_caps_layer_D[1], semantically_collapsed_layer_D_pose_shape)
                 ]
 
-            with tf.name_scope('aggregation') as scope5:
+            with tf.variable_scope('aggregation') as scope5:
 
                 aggregating_topology = TopologyBuilder().init()
                 aggregating_topology.set_is_axial_system(is_axial)
@@ -865,8 +869,8 @@ class MatrixCapsNet:
             [_, child_count, parent_count, pose_element_count] = numpy_shape_ct(children_per_potential_parent_pose_vectors)
             batch_size = tf.shape(children_per_potential_parent_pose_vectors)[0]
 
-            beta_u = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]), name='beta_u')
-            beta_a = tf.Variable(tf.truncated_normal([1, 1, parent_count, 1]), name='beta_a')
+            beta_u = tf.get_variable('beta_u', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
+            beta_a = tf.get_variable('beta_a', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
 
             initial_child_parent_assignment_weights = tf.ones([batch_size, child_count, parent_count, 1], tf.float32) / float(parent_count)
 
@@ -1128,7 +1132,7 @@ class MatrixCapsNet:
         return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
-        example_counter = tf.Variable(tf.constant(float(0)), trainable=False, dtype=tf.float32)
+        example_counter = tf.get_variable(name='example_counter', initializer=tf.constant(float(0)), trainable=False, dtype=tf.float32)
 
         example_counter = tf.cond(is_training,
                                   lambda: example_counter.assign(example_counter + batch_size, use_locking=True),
@@ -1149,7 +1153,7 @@ class MatrixCapsNet:
         return current_value
 
     def increasing_value(self, start, increase, is_training):
-        value = tf.Variable(tf.constant(float(start)), trainable=False, dtype=tf.float32)
+        value = tf.get_variable('increasing_value', initializer=tf.constant(float(start)), trainable=False, dtype=tf.float32)
         increase = tf.constant(float(increase), dtype=tf.float32)
         value = tf.cond(is_training, lambda: value.assign(value + increase), lambda: value)
 
@@ -1409,172 +1413,172 @@ class MatrixCapsNet:
 
             return reverse_indices
 
-
-    class BaseConvolutionTS(TopologyStrategy):
-        def __init__(self, convolution):
-            self.convolution = convolution
-
-
-    class SpatialConvolutionTS(BaseConvolutionTS):
-        def potential_parent_pose_input(self,
-                                        input,  # [batch, child_row, child_column, child_feature, pose_row, pose_column]
-                                        parent_feature_count
-                                        ):
-
-            s = tf.shape(input)
-
-            [batch_size, child_row_count, child_column_count, child_feature_count, *pose_dimensions] = [s[0], s[1], s[2], s[3], s[4], s[5]]
-
-            # reshape input to shift batch dimension to end of array
-
-            input_shape_length = tf.shape(s)[0]
-
-            transpose_perm_for_gather = tf.concat([tf.range(1, input_shape_length), tf.constant([0])])
-
-
-            # [child_row, child_column, child_feature, pose_row, pose_column, batch]
-            gatherable_input = tf.transpose(input, transpose_perm_for_gather)
-
-            # create index array with shape of [kernel_row, kernel_column, parent_row, parent_column]
-
-            # For each kernel row/column index and parent row/column index the correct child row/column index must
-            # be in the last dimension of the index array passed to gather_nd. The correct row/column index can be
-            # seen as a 2D axial system with an origin defined by patch row/column offset, and a further translation
-            # along the kernel's axes defined by the relative kernel row/column position. Note the practical fact
-            # that the row axes and column axes are entirely orthogonal and thus independent.
-
-            # Therefore a practical way to accomplish all these translations is to define the translation for each
-            # dimension (row or column) independently, and then add all coordinates for each dimension using broadcasting;
-            #
-            # Due to column and row translation independence; patch row offset + kernel row position = child row
-            # position, and the same for column positions.
-            #
-            # By indexing the n -1 indices of the indices argument to gather_nd by [kernel_row, kernel_column, parent_row, parent_column]
-            # and  putting all the translation data into arrays as described below broadcasting applies each translation
-            # for every dimension correctly;
-
-            # [kernel_row, 1, 1, 1, [0,1]] = [kernel_row_translation, 0] +  # kernel_row translation
-            # [1, 1, parent_row, 1, [0,1]] = [parent_row_offset, 0]         # parent_row_offset translation
-            # [1, kernel_column, 1, [0,1]] = [0, kernel_column_translation] + # kernel_column translation
-            # [1, 1, 1, parent_column_translation, [0, 1]] = [0, parent_column_offset]
-
-            # compute relevant data
-            valid_kernel_space = (self.kernel_size - 1)
-
-            parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
-            parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
-
-            # translation data
-            patch_row_offsets    = tf.range(0, parent_row_count) * self.stride
-            patch_column_offsets =  tf.range(0, parent_column_count) * self.stride
-
-            kernel_row_deltas = tf.range(self.kernel_size)
-            kernel_column_deltas = tf.range(self.kernel_size)
-
-            # data translatable through broadcasting
-
-            broadcastable_patch_row_offsets = tf.reshape(patch_row_offsets, [1, 1, parent_row_count, 1, 1])
-            broadcastable_patch_row_offsets = tf.concat([broadcastable_patch_row_offsets, tf.zeros(tf.shape(broadcastable_patch_row_offsets))], axis=-1)
-
-            broadcastable_patch_column_offsets = tf.reshape(patch_column_offsets, [1, 1, 1, parent_column_count, 1])
-            broadcastable_patch_column_offsets = tf.concat([tf.zeros(tf.shape(broadcastable_patch_column_offsets)), broadcastable_patch_column_offsets], axis=-1)
-
-            broadcastable_kernel_row_deltas = tf.reshape(kernel_row_deltas, [self.kernel_size, 1, 1, 1, 1])
-            broadcastable_kernel_row_deltas = tf.concat([broadcastable_kernel_row_deltas, tf.zeros(tf.shape(broadcastable_kernel_row_deltas))], axis=-1)
-
-            broadcastable_kernel_column_deltas = tf.reshape(kernel_column_deltas, [1, self.kernel_size, 1, 1, 1])
-            broadcastable_kernel_column_deltas = tf.concat([tf.zeros(tf.shape(broadcastable_kernel_column_deltas)), broadcastable_kernel_column_deltas], axis=-1)
-
-            kernel_patch_indices = broadcastable_patch_row_offsets + broadcastable_kernel_row_deltas + \
-                broadcastable_patch_column_offsets + broadcastable_kernel_column_deltas
-
-            gathered_output = tf.gather_nd(gatherable_input, kernel_patch_indices)
-
-            # indices are [kernel_row_index + parent_row_index * stride, kernel_column_index + parent_column_index
-
-            # reshape output to have batch at the beginning again
-            transpose_perm_after_gather = tf.concat([[input_shape_length - 1], tf.range(input_shape_length - 1)])
-
-            output = tf.tranpose(gathered_output, transpose_perm_after_gather)  # [batch, kernel_row, kernel_column, parent_row, parent_column, child_feature, pose_row, pose_column]
-
-            # move child_feature to target position
-            output = tf.transpose(output, [0, 1, 2, 5, 3, 4, 6, 7])
-
-            # insert a dimension for parent feature at the target position
-            output = tf.expand_dims(output, axis=5)
-
-            # tile output for parent feature dimension
-            output = tf.tile(output, [1, 1, 1, 1, 1, parent_feature_count, 1, 1, 1])
-
-            return output  # [batch, kernel_row, kernel_column, child_feature, parent_row, parent_column, parent_feature, pose_row, pose_column]
-
-        def potential_parent_pose_weights(self,
-                                          input,   # [batch, child_row, child_column, child_feature, pose_row, pose_column]
-                                          parent_feature_count
-                                          ):
-
-            # retrieve all relevant data from input
-            s = tf.shape(input)
-            [batch_size, child_row_count, child_column_count, child_feature_count, *pose_dimensions] = [s[0], s[1], s[2], s[3], s[4], s[5]]
-
-
-            # construct the filter set
-            weights = tf.Variable(
-                tf.truncated_normal([1, self.kernel_size, self.kernel_size, child_feature_count, 1, 1, parent_feature_count, *pose_dimensions], mean=0.0, stddev=1.0, dtype=tf.float32),
-                dtype=tf.float32, name='pose_transform_weights')
-
-            # tile the filter set for each parent_row and parent_column
-
-            valid_kernel_space = (self.kernel_size - 1)
-
-            parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
-            parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
-
-            tiled_weights = tf.tile(weights, [batch_size, 1, 1, 1, parent_row_count, parent_column_count, 1, 1, 1])
-
-            return tiled_weights  # [batch, kernel_row, kernel_column, child_feature, parent_row, parent_column, parent_feature, pose_row, pose_column]
-
-        def children_of_parents(self, input):
-            pass
-
-        def parents_of_children(self, input):
-            pass
-
-    class SemanticConvolutionTS(BaseConvolutionTS):
-        def potential_parent_pose_input(self, input):
-            pass
-
-        def potential_parent_pose_weights(self,
-                                          input,  # [batch, child_row, child_column, child_feature_row, child_feature_column, pose_row, pose_column]
-                                          parent_feature_dimensions  # [height, widths]
-                                          ):
-            # retrieve all relevant data from input
-            s = tf.shape(input)
-            [batch_size, child_row_count, child_column_count, *child_feature_dimensions, pose_row_count, pose_column_count] = [s[0], s[1], s[2], s[3], s[4], s[5], s[6]]
-
-
-            # construct the filter set
-            weights = tf.Variable(
-                tf.truncated_normal(
-                    [1, self.kernel_size, self.kernel_size, *child_feature_dimensions, 1, 1, *parent_feature_dimensions, pose_row_count, pose_column_count], mean=0.0, stddev=1.0, dtype=tf.float32),
-                dtype=tf.float32, name='pose_transform_weights')
-
-            # tile the filter set for each parent_row and parent_column
-
-            valid_kernel_space = (self.kernel_size - 1)
-
-            parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
-            parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
-
-            tiled_weights = tf.tile(weights, [batch_size, 1, 1, 1, 1, parent_row_count, parent_column_count, 1, 1, 1, 1])
-
-            return tiled_weights
-
-        def children_of_parents(self, input):
-            pass
-
-        def parents_of_children(self, input):
-            pass
+    #
+    # class BaseConvolutionTS(TopologyStrategy):
+    #     def __init__(self, convolution):
+    #         self.convolution = convolution
+    #
+    #
+    # class SpatialConvolutionTS(BaseConvolutionTS):
+    #     def potential_parent_pose_input(self,
+    #                                     input,  # [batch, child_row, child_column, child_feature, pose_row, pose_column]
+    #                                     parent_feature_count
+    #                                     ):
+    #
+    #         s = tf.shape(input)
+    #
+    #         [batch_size, child_row_count, child_column_count, child_feature_count, *pose_dimensions] = [s[0], s[1], s[2], s[3], s[4], s[5]]
+    #
+    #         # reshape input to shift batch dimension to end of array
+    #
+    #         input_shape_length = tf.shape(s)[0]
+    #
+    #         transpose_perm_for_gather = tf.concat([tf.range(1, input_shape_length), tf.constant([0])])
+    #
+    #
+    #         # [child_row, child_column, child_feature, pose_row, pose_column, batch]
+    #         gatherable_input = tf.transpose(input, transpose_perm_for_gather)
+    #
+    #         # create index array with shape of [kernel_row, kernel_column, parent_row, parent_column]
+    #
+    #         # For each kernel row/column index and parent row/column index the correct child row/column index must
+    #         # be in the last dimension of the index array passed to gather_nd. The correct row/column index can be
+    #         # seen as a 2D axial system with an origin defined by patch row/column offset, and a further translation
+    #         # along the kernel's axes defined by the relative kernel row/column position. Note the practical fact
+    #         # that the row axes and column axes are entirely orthogonal and thus independent.
+    #
+    #         # Therefore a practical way to accomplish all these translations is to define the translation for each
+    #         # dimension (row or column) independently, and then add all coordinates for each dimension using broadcasting;
+    #         #
+    #         # Due to column and row translation independence; patch row offset + kernel row position = child row
+    #         # position, and the same for column positions.
+    #         #
+    #         # By indexing the n -1 indices of the indices argument to gather_nd by [kernel_row, kernel_column, parent_row, parent_column]
+    #         # and  putting all the translation data into arrays as described below broadcasting applies each translation
+    #         # for every dimension correctly;
+    #
+    #         # [kernel_row, 1, 1, 1, [0,1]] = [kernel_row_translation, 0] +  # kernel_row translation
+    #         # [1, 1, parent_row, 1, [0,1]] = [parent_row_offset, 0]         # parent_row_offset translation
+    #         # [1, kernel_column, 1, [0,1]] = [0, kernel_column_translation] + # kernel_column translation
+    #         # [1, 1, 1, parent_column_translation, [0, 1]] = [0, parent_column_offset]
+    #
+    #         # compute relevant data
+    #         valid_kernel_space = (self.kernel_size - 1)
+    #
+    #         parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
+    #         parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
+    #
+    #         # translation data
+    #         patch_row_offsets    = tf.range(0, parent_row_count) * self.stride
+    #         patch_column_offsets =  tf.range(0, parent_column_count) * self.stride
+    #
+    #         kernel_row_deltas = tf.range(self.kernel_size)
+    #         kernel_column_deltas = tf.range(self.kernel_size)
+    #
+    #         # data translatable through broadcasting
+    #
+    #         broadcastable_patch_row_offsets = tf.reshape(patch_row_offsets, [1, 1, parent_row_count, 1, 1])
+    #         broadcastable_patch_row_offsets = tf.concat([broadcastable_patch_row_offsets, tf.zeros(tf.shape(broadcastable_patch_row_offsets))], axis=-1)
+    #
+    #         broadcastable_patch_column_offsets = tf.reshape(patch_column_offsets, [1, 1, 1, parent_column_count, 1])
+    #         broadcastable_patch_column_offsets = tf.concat([tf.zeros(tf.shape(broadcastable_patch_column_offsets)), broadcastable_patch_column_offsets], axis=-1)
+    #
+    #         broadcastable_kernel_row_deltas = tf.reshape(kernel_row_deltas, [self.kernel_size, 1, 1, 1, 1])
+    #         broadcastable_kernel_row_deltas = tf.concat([broadcastable_kernel_row_deltas, tf.zeros(tf.shape(broadcastable_kernel_row_deltas))], axis=-1)
+    #
+    #         broadcastable_kernel_column_deltas = tf.reshape(kernel_column_deltas, [1, self.kernel_size, 1, 1, 1])
+    #         broadcastable_kernel_column_deltas = tf.concat([tf.zeros(tf.shape(broadcastable_kernel_column_deltas)), broadcastable_kernel_column_deltas], axis=-1)
+    #
+    #         kernel_patch_indices = broadcastable_patch_row_offsets + broadcastable_kernel_row_deltas + \
+    #             broadcastable_patch_column_offsets + broadcastable_kernel_column_deltas
+    #
+    #         gathered_output = tf.gather_nd(gatherable_input, kernel_patch_indices)
+    #
+    #         # indices are [kernel_row_index + parent_row_index * stride, kernel_column_index + parent_column_index
+    #
+    #         # reshape output to have batch at the beginning again
+    #         transpose_perm_after_gather = tf.concat([[input_shape_length - 1], tf.range(input_shape_length - 1)])
+    #
+    #         output = tf.tranpose(gathered_output, transpose_perm_after_gather)  # [batch, kernel_row, kernel_column, parent_row, parent_column, child_feature, pose_row, pose_column]
+    #
+    #         # move child_feature to target position
+    #         output = tf.transpose(output, [0, 1, 2, 5, 3, 4, 6, 7])
+    #
+    #         # insert a dimension for parent feature at the target position
+    #         output = tf.expand_dims(output, axis=5)
+    #
+    #         # tile output for parent feature dimension
+    #         output = tf.tile(output, [1, 1, 1, 1, 1, parent_feature_count, 1, 1, 1])
+    #
+    #         return output  # [batch, kernel_row, kernel_column, child_feature, parent_row, parent_column, parent_feature, pose_row, pose_column]
+    #
+    #     def potential_parent_pose_weights(self,
+    #                                       input,   # [batch, child_row, child_column, child_feature, pose_row, pose_column]
+    #                                       parent_feature_count
+    #                                       ):
+    #
+    #         # retrieve all relevant data from input
+    #         s = tf.shape(input)
+    #         [batch_size, child_row_count, child_column_count, child_feature_count, *pose_dimensions] = [s[0], s[1], s[2], s[3], s[4], s[5]]
+    #
+    #
+    #         # construct the filter set
+    #         weights = tf.Variable(
+    #             tf.truncated_normal([1, self.kernel_size, self.kernel_size, child_feature_count, 1, 1, parent_feature_count, *pose_dimensions], mean=0.0, stddev=1.0, dtype=tf.float32),
+    #             dtype=tf.float32, name='pose_transform_weights')
+    #
+    #         # tile the filter set for each parent_row and parent_column
+    #
+    #         valid_kernel_space = (self.kernel_size - 1)
+    #
+    #         parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
+    #         parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
+    #
+    #         tiled_weights = tf.tile(weights, [batch_size, 1, 1, 1, parent_row_count, parent_column_count, 1, 1, 1])
+    #
+    #         return tiled_weights  # [batch, kernel_row, kernel_column, child_feature, parent_row, parent_column, parent_feature, pose_row, pose_column]
+    #
+    #     def children_of_parents(self, input):
+    #         pass
+    #
+    #     def parents_of_children(self, input):
+    #         pass
+    #
+    # class SemanticConvolutionTS(BaseConvolutionTS):
+    #     def potential_parent_pose_input(self, input):
+    #         pass
+    #
+    #     def potential_parent_pose_weights(self,
+    #                                       input,  # [batch, child_row, child_column, child_feature_row, child_feature_column, pose_row, pose_column]
+    #                                       parent_feature_dimensions  # [height, widths]
+    #                                       ):
+    #         # retrieve all relevant data from input
+    #         s = tf.shape(input)
+    #         [batch_size, child_row_count, child_column_count, *child_feature_dimensions, pose_row_count, pose_column_count] = [s[0], s[1], s[2], s[3], s[4], s[5], s[6]]
+    #
+    #
+    #         # construct the filter set
+    #         weights = tf.Variable(
+    #             tf.truncated_normal(
+    #                 [1, self.kernel_size, self.kernel_size, *child_feature_dimensions, 1, 1, *parent_feature_dimensions, pose_row_count, pose_column_count], mean=0.0, stddev=1.0, dtype=tf.float32),
+    #             dtype=tf.float32, name='pose_transform_weights')
+    #
+    #         # tile the filter set for each parent_row and parent_column
+    #
+    #         valid_kernel_space = (self.kernel_size - 1)
+    #
+    #         parent_row_count = int((child_row_count - valid_kernel_space) / self.stride)
+    #         parent_column_count = int((child_column_count - valid_kernel_space) / self.stride)
+    #
+    #         tiled_weights = tf.tile(weights, [batch_size, 1, 1, 1, 1, parent_row_count, parent_column_count, 1, 1, 1, 1])
+    #
+    #         return tiled_weights
+    #
+    #     def children_of_parents(self, input):
+    #         pass
+    #
+    #     def parents_of_children(self, input):
+    #         pass
 
 # get tensor's shape at graph construction time and standardizes it into a numpy array, such that reshape and all the
 # other tensor flow functions can work with it
