@@ -125,14 +125,17 @@ class MatrixCapsNetEstimator:
         # Create training op.
         assert mode == tf.estimator.ModeKeys.TRAIN
 
-        optimizer = tf.contrib.estimator.TowerOptimizer(tf.train.AdamOptimizer())
-        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+        optimizer = tf.train.AdamOptimizer()
 
         grads = optimizer.compute_gradients(loss)
         # weights_by_layer = tf.get_collection('weights')
 
         for index, grad in enumerate(grads):
             tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
+
+        optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
+
+        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         # for layer_id, weights in enumerate(weights_by_layer):
         #     tf.summary.histogram('weights_at_layer' + str(layer_id), tf.gradients(loss, weights))
