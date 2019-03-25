@@ -127,11 +127,11 @@ class MatrixCapsNetEstimator:
 
         optimizer = tf.train.AdamOptimizer()
 
-        grads = optimizer.compute_gradients(loss)
-        # weights_by_layer = tf.get_collection('weights')
-
-        for index, grad in enumerate(grads):
-            tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
+        # grads = optimizer.compute_gradients(loss)
+        # # weights_by_layer = tf.get_collection('weights')
+        #
+        # for index, grad in enumerate(grads):
+        #     tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
 
         optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
 
