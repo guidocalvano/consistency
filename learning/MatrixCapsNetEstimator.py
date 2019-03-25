@@ -133,7 +133,7 @@ class MatrixCapsNetEstimator:
         # for index, grad in enumerate(grads):
         #     tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
 
-        optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
+        # optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
 
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
@@ -206,7 +206,7 @@ class MatrixCapsNetEstimator:
         )
 
         estimator = tf.estimator.Estimator(
-            tf.contrib.estimator.replicate_model_fn(lambda features, labels, mode, params: self.model_function(features, labels, mode, params)),
+            lambda features, labels, mode, params: self.model_function(features, labels, mode, params),
             params={
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
