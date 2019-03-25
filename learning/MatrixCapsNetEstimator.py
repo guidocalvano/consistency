@@ -56,8 +56,8 @@ class MatrixCapsNetEstimator:
 
     @staticmethod
     def counter(next_number, is_training):
-        number_counter = tf.Variable(tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
 
+        number_counter = tf.get_variable('counter', initializer=tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
         return tf.cond(is_training,
                 lambda: number_counter.assign_add(next_number),
                 lambda: number_counter)
