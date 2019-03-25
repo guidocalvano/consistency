@@ -1640,3 +1640,81 @@ class TestTopologyBuilder(tf.test.TestCase):
         except UnknownInitializerException as e:
             self.assertTrue(True)
 
+    def test_replace_kernel_elements_with_max_of_child(self):
+        # name numbers for legibility
+        [child_row_count, child_column_count] = [5, 5]
+
+        kernel_size = 3
+        stride = 2
+
+        [batch_size, kernel_row_count, kernel_column_count, parent_row_count, parent_column_count, pose_row_count, pose_column_count] =\
+        [2,          kernel_size,      kernel_size,         2,                2,                   4,              4]
+
+        tiled_weight_shape = [batch_size, kernel_row_count, kernel_column_count, parent_row_count, parent_column_count, pose_row_count, pose_column_count]
+
+        # setup tested topology
+        self.topology.add_spatial_convolution([child_row_count, child_column_count], kernel_size, stride)
+
+        self.topology.finish({
+            "type": "xavier",
+            "kernel": True,
+            "matrix": True
+        })
+
+        input_full_shape = [batch_size, kernel_row_count, kernel_column_count, parent_row_count, parent_column_count, 1]
+        input_full = np.zeros(input_full_shape)
+
+        # BATCH 0
+        input_full[0, 0, 0, 0, 0] = -1  # child at 0, 0
+        input_full[0, 1, 0, 0, 0] = -2  # child at 1, 0
+        input_full[0, 2, 0, 0, 0] = -3  # child at 2, 0
+        input_full[0, 0, 0, 1, 0] = -2  # child at 2, 0
+
+        # greatest value of child at 2, 0 === -2
+
+        input_full[0, 2, 2, 0, 0] = -4  # child at 2, 2
+        input_full[0, 0, 2, 1, 0] = -5  # child at 2, 2
+        input_full[0, 2, 0, 0, 1] = -6  # child at 2, 2
+        input_full[0, 0, 0, 1, 1] = -7  # child at 2, 2
+
+        # greatest value of child at 2, 2 === -4
+
+        # BATCH 1
+        input_full[1, 2, 2, 0, 0] = -2  # child at 2, 2
+        input_full[1, 0, 2, 1, 0] = -3  # child at 2, 2
+        input_full[1, 2, 0, 0, 1] = -4  # child at 2, 2
+        input_full[1, 0, 0, 1, 1] = -1  # child at 2, 2
+
+        # greatest value of child at 2, 2 === -2
+
+        input_collapsed_shape = [batch_size, kernel_row_count * kernel_column_count, parent_row_count * parent_column_count, 1]
+        input_collapsed = np.reshape(input_full, input_collapsed_shape)
+
+        with self.test_session() as sess:
+            input_layer = tf.constant(input_collapsed.astype(np.float32))
+            child_maxima = self.topology.replace_kernel_elements_with_max_of_child(input_layer)
+
+            sess.run(tf.global_variables_initializer())
+
+            result = tf.reshape(child_maxima, [2, kernel_row_count, kernel_column_count, parent_row_count, parent_column_count]).eval()
+
+            # BATCH 0
+
+            self.assertTrue(result[0, 0, 0, 0, 0] == -1)  # child at 0, 0
+            self.assertTrue(result[0, 1, 0, 0, 0] == -2)  # child at 1, 0
+            self.assertTrue(result[0, 2, 0, 0, 0] == -2)  # child at 2, 0
+            self.assertTrue(result[0, 0, 0, 1, 0] == -2 ) # child at 2, 0
+
+            self.assertTrue(result[0, 2, 2, 0, 0] == -4)  # child at 2, 2
+            self.assertTrue(result[0, 0, 2, 1, 0] == -4)  # child at 2, 2
+            self.assertTrue(result[0, 2, 0, 0, 1] == -4)  # child at 2, 2
+            self.assertTrue(result[0, 0, 0, 1, 1] == -4)  # child at 2, 2
+
+            # BATCH 1
+            # child at 2, 2
+            self.assertTrue(result[1, 2, 2, 0, 0] == -1)
+            self.assertTrue(result[1, 0, 2, 1, 0] == -1)
+            self.assertTrue(result[1, 2, 0, 0, 1] == -1)
+            self.assertTrue(result[1, 0, 0, 1, 1] == -1)
+
+

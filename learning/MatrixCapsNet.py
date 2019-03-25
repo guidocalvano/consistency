@@ -1023,8 +1023,8 @@ class MatrixCapsNet:
             #     tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi) + sys.float_info.epsilon
             # )
 
-            divisor = tf.sqrt(tf.reduce_prod(likely_parent_pose_variance, axis=pose_element_axis, keepdims=True) * 2.0 * math.pi + sys.float_info.epsilon) + sys.float_info.epsilon
-            divisor = tf.identity(divisor, name='divisor')
+            ln_divisor = tf.reduce_sum(tf.log(likely_parent_pose_variance + sys.float_info.epsilon) + tf.log(2.0 * math.pi), axis=pose_element_axis, keepdims=True) * .5
+            ln_divisor = tf.identity(ln_divisor, name='ln_divisor')
             # log_factor = (tf.reduce_sum(-tf.log(likely_parent_pose_variance * 2.0 * np.pi), axis=pose_element_axis, keepdims=True)) / 2.0
 
             # assert (numpy_shape_ct(factor)[1:] == np.array([batch_count, 1, parent_count, 1])[1:]).all()
@@ -1048,11 +1048,17 @@ class MatrixCapsNet:
             # parent_probability_per_child = factor * tf.exp(power)
             # assert (numpy_shape_ct(parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()
 
-            parent_probability_per_child = tf.exp(power) / (divisor + sys.float_info.epsilon)
-            parent_probability_per_child = tf.identity(parent_probability_per_child, name='parent_probability_per_child')
+            # subtracting the log of a divisor from the power
+            ln_parent_probability_per_child = power - ln_divisor
+
+            # Because the probabilities are improper (i.e. not necessarily summing to a value of 1) numerical instability is possible
+            # By scaling down to the highest value
+            ln_normalized_parent_probability_per_child = ln_parent_probability_per_child - tf.stop_gradient(topology.replace_kernel_elements_with_max_of_child(ln_parent_probability_per_child))
+            normalized_parent_probability_per_child = tf.exp(ln_normalized_parent_probability_per_child)
+            normalized_parent_probability_per_child = tf.identity(normalized_parent_probability_per_child, name='normalized_parent_probability_per_child')
 
             # [batch, child, parent, 1]
-            active_parent_probability_per_child = parent_probability_per_child * parent_activations
+            active_parent_probability_per_child = normalized_parent_probability_per_child * parent_activations
             active_parent_probability_per_child = tf.identity(active_parent_probability_per_child, name='active_parent_probability_per_child')
 
             assert (numpy_shape_ct(active_parent_probability_per_child)[1:] == np.array([batch_count, child_count, parent_count, 1])[1:]).all()

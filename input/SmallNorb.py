@@ -463,7 +463,8 @@ class SmallNorb:
         return self.validation["examples"].shape[0]
 
     def label_count(self):
-        return np.unique(self.test["labels"]).shape[0]
+        #@todo: do this in a better way:
+        return 5  # np.unique(self.test["labels"]).shape[0]
 
     def limit_by_split(self, max_element_count):
         training_ids = np.random.choice(self.training_example_count(), [max_element_count], False)

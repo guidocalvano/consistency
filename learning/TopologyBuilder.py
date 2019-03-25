@@ -40,8 +40,8 @@ class TopologyBuilder:
         parents_share_weights = True
         kernels_share_weights = False
 
-        parent_row_count = int((spatial_input_dimensions[0] - valid_kernel_space) / stride)
-        parent_column_count = int((spatial_input_dimensions[1] - valid_kernel_space) / stride)
+        parent_row_count = int(np.ceil((spatial_input_dimensions[0] - valid_kernel_space) / stride))
+        parent_column_count = int(np.ceil((spatial_input_dimensions[1] - valid_kernel_space) / stride))
 
         self.add_convolution(np.arange(kernel_size), np.arange(parent_row_count) * stride, kernels_share_weights, parents_share_weights)
         self.add_convolution(np.arange(kernel_size), np.arange(parent_column_count) * stride, kernels_share_weights, parents_share_weights)
@@ -91,8 +91,35 @@ class TopologyBuilder:
         self.child_parent_kernel_mapping = forward_edge_list
         self.parent_kernel_child_mapping = reverse_edge_list
 
+        # self.init_linear_kernel_linear_parent_to_linear_child()
+
         self.add_initializer(initialization_options)
 
+    def convert_map_indices_to_linear(self, map_indices, map_shape):
+
+        scale = np.cumprod(np.array([1] + map_shape[:-1]))
+        scale = scale.reshape([1] + list(scale.shape))
+
+        linear_offsets = map_indices * scale
+
+        linear_indices = np.sum(linear_offsets, 1).astype('int')
+
+        return linear_indices
+
+    def init_linear_kernel_linear_parent_to_linear_child(self):
+        child_map_index_offset = -len(self.children_shape)
+        parent_map_index_offset = len(self.kernel_shape())
+
+        linear_child_indices  = self.convert_map_indices_to_linear(self.parent_kernel_child_mapping[:, child_map_index_offset:], self.children_shape)
+        linear_kernel_indices = self.convert_map_indices_to_linear(self.parent_kernel_child_mapping[:, :parent_map_index_offset], self.kernel_shape())
+        linear_parent_indices = self.convert_map_indices_to_linear(self.parent_kernel_child_mapping[:, parent_map_index_offset:child_map_index_offset], self.parent_shape())
+
+        linear_kernel_size = np.product(self.kernel_shape())
+        linear_parent_size = np.product(self.parent_shape())
+
+        self.linear_kernel_linear_parent_to_linear_child = np.zeros([linear_kernel_size, linear_parent_size]).astype('int')
+
+        self.linear_kernel_linear_parent_to_linear_child[linear_kernel_indices, linear_parent_indices] = linear_child_indices
 
     # interface requirement
     def children_to_linear(self, children):
@@ -339,9 +366,58 @@ class TopologyBuilder:
         # multiply by linear_parent_to_linear_child matrix, thus summing the values of all parents of each child:
         # [linearized_child, batch] = [linearized_child, linearized_kernel_parent] sparse dense matmul [linearized_kernel_parent, batch]
 
-        values_summed_per_child = tf.sparse_tensor_dense_matmul(linearized_child_to_parent_kernel, parent_kernel_prepared_for_sum_per_child)
+        values_summed_per_child = tf.sparse_tensor_dense_matmul(tf.to_float(linearized_child_to_parent_kernel), parent_kernel_prepared_for_sum_per_child)
 
         return tf.transpose(values_summed_per_child)  # reverse batch and sum dimensions back
+
+    # interface requirement
+    # def replace_kernel_elements_with_max_of_child(self,
+    #                                               parent_kernel_values  # [batch, kernel_position_linearized, parent_position_linearized, 1]
+    #                                               ):
+    #     values_summed_per_child = self._compute_max_for_children(parent_kernel_values)
+    #
+    #     parent_kernel_values_shape = [-1] + parent_kernel_values.get_shape().as_list()[1:]
+    #     child_values_projected_to_parent_kernel_values = self._project_child_scalars_to_parent_kernels(values_summed_per_child, parent_kernel_values_shape)
+    #     return child_values_projected_to_parent_kernel_values
+
+    def replace_kernel_elements_with_max_of_child(self, parent_kernel_values):
+        s = tf.shape(parent_kernel_values)
+        batch_size, linear_kernel_position_size, parent_position_size = s[0], s[1], s[2]
+
+        kernel_parent_position_linearized_axis = 1
+        # [batch, kernel_parent_position_linearized]
+        fully_linearized_kernel_parent_position = tf.reshape(parent_kernel_values, [batch_size, -1])
+        kernel_parent_position_linearized = tf.shape(fully_linearized_kernel_parent_position)[1]
+
+        # [kernel_parent_position_linearized, batch]
+        # parent_kernel_prepared_for_max_per_child = tf.transpose(fully_linearized_kernel_parent_position)
+
+        linearized_child_to_parent_kernel = self.make_sparse_linearized_child_to_parent_kernel(
+            self.child_parent_kernel_mapping)  # [edge_id, coordinate], coordinate = *child_dimensions + *kernel_dimensions + *parent_dimensions
+
+        linearized_parent_kernel_to_child = tf.sparse_transpose(linearized_child_to_parent_kernel)
+        linear_child_indices = tf.to_int32(tf.range(0, tf.shape(linearized_parent_kernel_to_child)[1]))
+        linear_child_indices_projected_to_linear_parent_kernel = tf.reshape(tf.sparse_tensor_dense_matmul(linearized_parent_kernel_to_child, tf.expand_dims(linear_child_indices, -1)), [-1])
+
+        linear_parent_kernel_indexes = tf.where(tf.equal(fully_linearized_kernel_parent_position, fully_linearized_kernel_parent_position))
+
+        corresponding_child_indexes = tf.to_int32(tf.expand_dims(tf.gather_nd(linear_child_indices_projected_to_linear_parent_kernel, tf.expand_dims(linear_parent_kernel_indexes[:, kernel_parent_position_linearized_axis], 1)), 1))
+
+        indices_for_maxing = tf.concat([tf.to_int32(linear_parent_kernel_indexes), corresponding_child_indexes], 1)
+        values_for_maxing = tf.gather_nd(fully_linearized_kernel_parent_position, linear_parent_kernel_indexes)
+
+        sparse_for_maxing = tf.SparseTensor(tf.to_int64(indices_for_maxing), values_for_maxing, tf.to_int64([batch_size, kernel_parent_position_linearized, np.product(self.children_shape)]))
+
+        lowest_value_per_child = tf.sparse_reduce_max(sparse_for_maxing * -1, 1) * -1
+        lowest_values_to_kernels = tf.transpose(tf.sparse_tensor_dense_matmul(tf.to_float(linearized_parent_kernel_to_child), tf.transpose(lowest_value_per_child)))
+
+        highest_value_per_child = tf.sparse_reduce_max(sparse_for_maxing, 1)
+        highest_values_to_kernels = tf.transpose(tf.sparse_tensor_dense_matmul(tf.to_float(linearized_parent_kernel_to_child), tf.transpose(highest_value_per_child)))
+
+        highest_values_to_kernels_in_input_shape = tf.reshape(highest_values_to_kernels, s)
+
+        return highest_values_to_kernels_in_input_shape
+
 
     def _project_child_scalars_to_parent_kernels(self,
                                                  child_values,  # [batch, child_value]
@@ -363,7 +439,7 @@ class TopologyBuilder:
         return child_summed_values_per_kernel_parent_position
 
     def make_sparse_linearized_child_to_parent_kernel(self, child_parent_kernel_mapping):
-        values = np.array([1.0] * child_parent_kernel_mapping.shape[0], dtype=np.float32)
+        values = np.array([1] * child_parent_kernel_mapping.shape[0], dtype=np.int32)
         parent_kernel_shape = self.parent_kernel_shape()
         dense_shape = self.children_shape + parent_kernel_shape
         as_sparse_map = tf.sparse_reorder(tf.SparseTensor(indices=child_parent_kernel_mapping, values=values, dense_shape=dense_shape))
