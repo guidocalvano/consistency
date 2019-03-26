@@ -2,6 +2,7 @@ import tensorflow as tf
 from learning import MatrixCapsNet
 from input.SmallNorb import SmallNorb
 import config
+from tensorflow.python.client import device_lib
 
 
 class MatrixCapsNetEstimator:
@@ -206,7 +207,7 @@ class MatrixCapsNetEstimator:
         )
 
         estimator = tf.estimator.Estimator(
-            tf.contrib.estimator.replicate_model_fn(self.model_function),
+            tf.contrib.estimator.replicate_model_fn(self.model_function, devices=self.get_available_gpus()[:config.gpu_count]),
             params={
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
@@ -217,6 +218,11 @@ class MatrixCapsNetEstimator:
         )
 
         return estimator
+
+
+    def get_available_gpus(self):
+        local_device_protos = device_lib.list_local_devices()
+        return [x.name for x in local_device_protos if x.device_type == 'GPU']
 
     def train(self, small_norb, model_path, batch_size, epoch_count, max_steps):
         if max_steps is None:
