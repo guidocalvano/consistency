@@ -199,10 +199,12 @@ class MatrixCapsNetEstimator:
     def create_estimator(self, small_norb, model_path, epoch_count=1.0, save_summary_steps=500):
         total_example_count = small_norb.training_example_count() * epoch_count
 
+        distribution = tf.contrib.distribute.MirroredStrategy()
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=10,  # Retain the 10 most recent checkpoints.
-            save_summary_steps=self.save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            save_summary_steps=self.save_summary_steps,  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            train_distribute=distribution
         )
 
         estimator = tf.estimator.Estimator(
