@@ -207,7 +207,7 @@ class MatrixCapsNetEstimator:
         )
 
         estimator = tf.estimator.Estimator(
-            tf.contrib.estimator.replicate_model_fn(self.model_function, devices=self.get_available_gpus()[:config.gpu_count]),
+            tf.contrib.estimator.replicate_model_fn(self.model_function, devices=self.get_available_gpus()[:config.GPU_COUNT]),
             params={
                 'total_example_count': total_example_count,
                 'iteration_count': 3,
