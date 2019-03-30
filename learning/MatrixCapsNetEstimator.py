@@ -191,7 +191,7 @@ class MatrixCapsNetEstimator:
         # Apply the gradients to adjust the shared variables.
         train_op = optimizer.apply_gradients(grads, global_step=global_step)
 
-        loss = tf.concat(loss_sub_batches, 0)
+        loss = tf.reduce_mean(tf.stack(loss_sub_batches, 0))
         predicted_classes = tf.concat(predicted_classes_sub_batches, 0)
         activations = tf.concat(activations_sub_batches, 0)
         poses = tf.concat(poses_sub_batches, 0)
