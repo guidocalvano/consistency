@@ -130,73 +130,75 @@ class MatrixCapsNet:
                 final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
                 final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
 
-                next_routing_state = tf.get_collection("next_routing_state")
+                next_routing_state = tf.get_collection("next_routing_state", scope0)
 
-            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization")) + tf.reduce_sum(
-                tf.get_collection("orthogonal_regularization")) * self.regularization["axial"] if is_axial else None
+            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
+                tf.get_collection("orthogonal_regularization"), scope0) * self.regularization["axial"] if is_axial else None
 
         return [final_activations, final_poses], next_routing_state, axial_system_loss
 
     def build_simple_architecture(self, input_layer, iteration_count, routing_state):
 
-        is_axial = self.regularization["axial"] > 0.0
+        with tf.name_scope('simple_matrix_capsule_architecture') as scope0:
 
-        routing_state = None
+            is_axial = self.regularization["axial"] > 0.0
 
-        iteration_count = 3
+            routing_state = None
 
-        texture_patches_A = 10
-        capsule_count_C = 4
-        capsule_count_D = 5
+            iteration_count = 3
 
-        final_steepness_lambda = tf.constant(.01)
+            texture_patches_A = 10
+            capsule_count_C = 4
+            capsule_count_D = 5
 
-        convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
+            final_steepness_lambda = tf.constant(.01)
 
-        # number of capsules is defined by number of texture patches
-        primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=is_axial)
+            convolution_layer_A = self.build_encoding_convolution(input_layer, 5, texture_patches_A)
 
-        with tf.variable_scope('layerC') as scope1:
+            # number of capsules is defined by number of texture patches
+            primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=is_axial)
 
-            c_topology = TopologyBuilder().init()
-            c_topology.set_is_axial_system(is_axial)
-            c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
-            c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
-            c_topology.finish(self.weight_init_options)
+            with tf.variable_scope('layerC') as scope1:
 
-            conv_caps_layer_C = self.build_matrix_caps(
-                primary_capsule_layer_B,
-                c_topology,
-                final_steepness_lambda,
-                iteration_count,
-                routing_state
-            )
+                c_topology = TopologyBuilder().init()
+                c_topology.set_is_axial_system(is_axial)
+                c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
+                c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
+                c_topology.finish(self.weight_init_options)
 
-        with tf.variable_scope('layerAggregation') as scope1:
+                conv_caps_layer_C = self.build_matrix_caps(
+                    primary_capsule_layer_B,
+                    c_topology,
+                    final_steepness_lambda,
+                    iteration_count,
+                    routing_state
+                )
 
-            aggregating_topology = TopologyBuilder().init()
-            aggregating_topology.set_is_axial_system(is_axial)
-            aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
-            aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
-            aggregating_topology.finish(self.weight_init_options)
+            with tf.variable_scope('layerAggregation') as scope1:
 
-            aggregating_capsule_layer = self.build_matrix_caps(
-                conv_caps_layer_C,
-                aggregating_topology,
-                final_steepness_lambda,
-                iteration_count,
-                routing_state
-            )
+                aggregating_topology = TopologyBuilder().init()
+                aggregating_topology.set_is_axial_system(is_axial)
+                aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
+                aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
+                aggregating_topology.finish(self.weight_init_options)
 
-        final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
-        final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
+                aggregating_capsule_layer = self.build_matrix_caps(
+                    conv_caps_layer_C,
+                    aggregating_topology,
+                    final_steepness_lambda,
+                    iteration_count,
+                    routing_state
+                )
 
-        next_routing_state = tf.get_collection("next_routing_state")
+            final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
+            final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
 
-        axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization")) + tf.reduce_sum(
-            tf.get_collection("orthogonal_regularization")) * self.regularization["axial"] if is_axial else None
+            next_routing_state = tf.get_collection("next_routing_state", scope0)
 
-        return [final_activations, final_poses], next_routing_state, axial_system_loss
+            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
+                tf.get_collection("orthogonal_regularization", scope0)) * self.regularization["axial"] if is_axial else None
+
+            return [final_activations, final_poses], next_routing_state, axial_system_loss
 
     # def build_axial_system_architecture(self, input_layer, iteration_count, routing_state):
     #
@@ -362,10 +364,10 @@ class MatrixCapsNet:
                 final_activations = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[0])
                 final_poses = aggregating_topology.reshape_parent_map_to_linear(aggregating_capsule_layer[1])
 
-            next_routing_state = tf.get_collection("next_routing_state")
+            next_routing_state = tf.get_collection("next_routing_state", scope0)
 
-        axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization")) + tf.reduce_sum(
-            tf.get_collection("orthogonal_regularization")) * self.regularization["axial"] if is_axial else None
+        axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
+            tf.get_collection("orthogonal_regularization", scope0)) * self.regularization["axial"] if is_axial else None
 
         return [final_activations, final_poses], next_routing_state, axial_system_loss
 

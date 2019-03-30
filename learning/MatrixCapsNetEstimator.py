@@ -69,69 +69,136 @@ class MatrixCapsNetEstimator:
 
     def model_function(self, examples, labels, mode, params):
 
-        total_example_count = params["total_example_count"]
-        iteration_count = params["iteration_count"]
-        label_count = params["label_count"]
-        batch_size = tf.cast(tf.gather(tf.shape(examples), 0), tf.float32)
+        with tf.device('/cpu:0'):
 
-        is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
+            total_example_count = params["total_example_count"]
+            iteration_count = params["iteration_count"]
+            label_count = params["label_count"]
+            batch_size = tf.cast(tf.gather(tf.shape(examples), 0), tf.float32)
 
-        processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
+            is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
 
-        #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
+            processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
 
-        # Compute evaluation metrics.
-        accuracy = tf.metrics.accuracy(labels=labels,
-                                       predictions=predicted_classes,
-                                       name='acc_op')
+            optimizer = tf.train.AdamOptimizer()
 
-        metrics = {'accuracy': accuracy}
-        # tf.summary.scalar('accuracy', accuracy[1])
+            #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
+            train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,
+                        tf.train.get_global_step())
 
-        if mode == tf.estimator.ModeKeys.EVAL:
-            return tf.estimator.EstimatorSpec(
-                mode, loss=loss, eval_metric_ops=metrics)
+            # Compute evaluation metrics.
+            accuracy = tf.metrics.accuracy(labels=labels,
+                                           predictions=predicted_classes,
+                                           name='acc_op')
 
-        # Create training op.
-        assert mode == tf.estimator.ModeKeys.TRAIN
+            metrics = {'accuracy': accuracy}
+            # tf.summary.scalar('accuracy', accuracy[1])
 
-        optimizer = tf.train.AdamOptimizer()
-
-        # grads = optimizer.compute_gradients(loss)
-        # # weights_by_layer = tf.get_collection('weights')
-        #
-        # for index, grad in enumerate(grads):
-        #     tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
-
-        # optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
-
-        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
-
-        # for layer_id, weights in enumerate(weights_by_layer):
-        #     tf.summary.histogram('weights_at_layer' + str(layer_id), tf.gradients(loss, weights))
+            if mode == tf.estimator.ModeKeys.PREDICT:
+                predictions = {
+                    'class_ids': predicted_classes[:, tf.newaxis],
+                    'probabilities': tf.nn.softmax(activations),
+                    'activations': activations,
+                    'poses': poses
+                }
+                return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
 
-        class TrainingHooks(tf.train.SessionRunHook):
 
-            def __init__(self, reset_routing_configuration_op):
-                self.reset_routing_configuration_op = reset_routing_configuration_op
+            if mode == tf.estimator.ModeKeys.EVAL:
+                return tf.estimator.EstimatorSpec(
+                    mode, loss=loss, eval_metric_ops=metrics)
 
-            def after_create_session(self, session, coord):
-                self.reset_routing_configuration_op.eval(session)
+            # Create training op.
+            assert mode == tf.estimator.ModeKeys.TRAIN
 
-        training_hooks = TrainingHooks(reset_routing_configuration_op)
 
-        #@TODO figure out how reinitialization should work
-        train_spec = tf.estimator.EstimatorSpec(
-            mode,
-            loss=loss,
-            train_op=train_op # ,
-            # training_hooks=[training_hooks]
-        )
+            # grads = optimizer.compute_gradients(loss)
+            # # weights_by_layer = tf.get_collection('weights')
+            #
+            # for index, grad in enumerate(grads):
+            #     tf.summary.histogram("{}-grad".format(grads[index][1].name), grads[index])
 
-        return train_spec
+            # optimizer=tf.contrib.estimator.TowerOptimizer(optimizer)
 
-    def network_loss(self, examples, labels, label_count, iteration_count, processed_example_counter):
+
+            # for layer_id, weights in enumerate(weights_by_layer):
+            #     tf.summary.histogram('weights_at_layer' + str(layer_id), tf.gradients(loss, weights))
+
+
+            # class TrainingHooks(tf.train.SessionRunHook):
+            #
+            #     def __init__(self, reset_routing_configuration_op):
+            #         self.reset_routing_configuration_op = reset_routing_configuration_op
+            #
+            #     def after_create_session(self, session, coord):
+            #         self.reset_routing_configuration_op.eval(session)
+            #
+            # training_hooks = TrainingHooks(reset_routing_configuration_op)
+
+            #@TODO figure out how reinitialization should work
+            train_spec = tf.estimator.EstimatorSpec(
+                mode,
+                loss=loss,
+                train_op=train_op # ,
+                # training_hooks=[training_hooks]
+            )
+
+            return train_spec
+
+    def make_parallel(self, examples, labels, optimizer, label_count, iteration_count, processed_example_counter, global_step):
+
+        examples_sub_batches = tf.split(examples, config.GPU_COUNT, 0)
+        labels_sub_batches = tf.split(labels, config.GPU_COUNT, 0)
+
+        tower_grads = []
+        loss_sub_batches = []
+        predicted_classes_sub_batches = []
+        activations_sub_batches = []
+        poses_sub_batches = []
+
+        with tf.variable_scope(tf.get_variable_scope()):
+            for i in range(config.GPU_COUNT):
+                with tf.device('/gpu:%d' % i):
+                    with tf.name_scope('%s_%d' % ('tower', i)) as scope:
+                        # Calculate the loss for one tower of the CIFAR model. This function
+                        # constructs the entire CIFAR model but shares the variables across
+                        # all towers.
+                        loss_sub_batch, predicted_classes_sub_batch, activations_sub_batch, poses_sub_batch = \
+                            self.network_output(examples_sub_batches[i], labels_sub_batches[i], label_count, iteration_count, processed_example_counter)
+
+                        # Reuse variables for the next tower.
+                        tf.get_variable_scope().reuse_variables()
+
+                        # Retain the summaries from the final tower.
+                        # summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+
+                        # Calculate the gradients for the batch of data on this CIFAR tower.
+                        grads = optimizer.compute_gradients(loss_sub_batch)
+
+                        # Keep track of the gradients across all towers.
+                        tower_grads.append(grads)
+
+                        loss_sub_batches.append(loss_sub_batch)
+                        predicted_classes_sub_batches.append(predicted_classes_sub_batch)
+                        activations_sub_batches.append(activations_sub_batch)
+                        poses_sub_batches.append(poses_sub_batch)
+
+        # We must calculate the mean of each gradient. Note that this is the
+        # synchronization point across all towers.
+        grads = self.average_gradients(tower_grads)
+
+        # Apply the gradients to adjust the shared variables.
+        train_op = optimizer.apply_gradients(grads, global_step=global_step)
+
+        loss = tf.concat(loss_sub_batches, 0)
+        predicted_classes = tf.concat(predicted_classes_sub_batches, 0)
+        activations = tf.concat(activations_sub_batches, 0)
+        poses = tf.concat(poses_sub_batches, 0)
+
+        return train_op, loss, predicted_classes, activations, poses
+
+    def network_output(self, examples, labels, label_count, iteration_count, processed_example_counter):
 
         routing_state = None
 
@@ -150,14 +217,6 @@ class MatrixCapsNetEstimator:
         (activations, poses) = network_output
 
         predicted_classes = tf.reshape(tf.argmax(activations, 1), [-1])
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            predictions = {
-                'class_ids': predicted_classes[:, tf.newaxis],
-                'probabilities': tf.nn.softmax(activations),
-                'activations': activations,
-                'poses': poses
-            }
-            return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
         spread_loss_margin = MatrixCapsNetEstimator.spread_loss_margin(processed_example_counter)
 
@@ -166,7 +225,7 @@ class MatrixCapsNetEstimator:
 
         if regularization_loss is not None: loss = loss + regularization_loss * self.regularization['axial']
 
-        return loss
+        return loss, predicted_classes, activations, poses
 
 
 
@@ -246,7 +305,11 @@ class MatrixCapsNetEstimator:
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=10,  # Retain the 10 most recent checkpoints.
-            save_summary_steps=self.save_summary_steps  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            save_summary_steps=self.save_summary_steps,  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            session_config=tf.ConfigProto(
+                allow_soft_placement=True,
+                log_device_placement=True
+            )
         )
 
         estimator = tf.estimator.Estimator(
@@ -257,7 +320,7 @@ class MatrixCapsNetEstimator:
                 'label_count': small_norb.label_count()
             },
             model_dir=model_path,
-            config=run_config
+            config=run_config,
         )
 
         return estimator
