@@ -86,7 +86,7 @@ class MatrixCapsNetEstimator:
             train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,
                         tf.train.get_global_step())
 
-            tf.summary.histogram(predicted_classes)
+            tf.summary.histogram('predicted_classes', predicted_classes)
 
             # Compute evaluation metrics.
             accuracy = tf.metrics.accuracy(labels=labels,
