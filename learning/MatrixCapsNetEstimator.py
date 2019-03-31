@@ -86,6 +86,8 @@ class MatrixCapsNetEstimator:
             train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,
                         tf.train.get_global_step())
 
+            tf.summary.histogram(predicted_classes)
+
             # Compute evaluation metrics.
             accuracy = tf.metrics.accuracy(labels=labels,
                                            predictions=predicted_classes,
@@ -219,6 +221,8 @@ class MatrixCapsNetEstimator:
         predicted_classes = tf.reshape(tf.argmax(activations, 1), [-1])
 
         spread_loss_margin = MatrixCapsNetEstimator.spread_loss_margin(processed_example_counter)
+
+        tf.summary.scalar('spread_loss_margin', spread_loss_margin)
 
         loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
             "margin": spread_loss_margin})

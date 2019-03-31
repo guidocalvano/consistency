@@ -918,6 +918,7 @@ class MatrixCapsNet:
                     # rather than parents of children
 
             tf.summary.histogram('final_routing', child_parent_assignment_weights)
+            tf.summary.scalar('final_routing_sum', tf.reduce_sum(child_parent_assignment_weights))
 
             tf.add_to_collection('next_routing_state', child_parent_assignment_weights)
 
@@ -1062,6 +1063,9 @@ class MatrixCapsNet:
             # Because the probabilities are improper (i.e. not necessarily summing to a value of 1) numerical instability is possible
             # By scaling down to the highest value
             ln_normalized_parent_probability_per_child = ln_parent_probability_per_child - tf.stop_gradient(topology.replace_kernel_elements_with_max_of_child(ln_parent_probability_per_child))
+
+            tf.summary.histogram('ln_normalized_parent_probability_per_child', ln_normalized_parent_probability_per_child)
+
             normalized_parent_probability_per_child = tf.exp(ln_normalized_parent_probability_per_child)
             normalized_parent_probability_per_child = tf.identity(normalized_parent_probability_per_child, name='normalized_parent_probability_per_child')
 
@@ -1128,7 +1132,7 @@ class MatrixCapsNet:
             mapped_parent_as_child_pose_matrices = topology.reshape_parents_to_map(linear_parent_as_child_pose_matrices)
 
             tf.summary.histogram('activations', mapped_parent_as_child_activations)
-            tf.summary.histogram('poses', mapped_parent_as_child_pose_matrices)
+            # tf.summary.histogram('poses', mapped_parent_as_child_pose_matrices)
             tf.summary.histogram('poses_determinant', tf.linalg.det(mapped_parent_as_child_pose_matrices))
 
         self.activation_layers.append(mapped_parent_as_child_activations)

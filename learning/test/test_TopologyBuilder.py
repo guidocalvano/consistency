@@ -1626,8 +1626,13 @@ class TestTopologyBuilder(tf.test.TestCase):
             random_values = output_matrix_list[:, ~np.eye(4).astype('bool')]
 
             self.assertTrue(np.abs(np.mean(random_values)) < .1 )
-            self.assertTrue(np.abs(np.mean(np.abs(random_values)) - 0.25) < .1)
+            self.assertTrue(np.abs(np.mean(np.abs(random_values)) - 0.015) < .1)
             self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
+            # the whole point of using identity matrices is probably to get the determinants close to 1
+            self.assertTrue(np.abs(mean_determinant_values - 1.0) < .01)
+
+
 
 
     def test_build_wrong_init(self):

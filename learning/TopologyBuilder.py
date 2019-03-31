@@ -151,12 +151,12 @@ class TopologyBuilder:
 
         potential_parent_poses_map = self._compute_potential_parent_poses_map(input_layer_poses)
 
-        tf.summary.histogram('potential_parent_poses_map', potential_parent_poses_map)
+        # tf.summary.histogram('potential_parent_poses_map', potential_parent_poses_map)
         tf.summary.histogram('potential_parent_poses_determinant', tf.linalg.det(potential_parent_poses_map))
 
         potential_parent_poses_map = self.add_coordinates(potential_parent_poses_map)
 
-        tf.summary.histogram('potential_parent_poses_map_with_coordinates', potential_parent_poses_map)
+        # tf.summary.histogram('potential_parent_poses_map_with_coordinates', potential_parent_poses_map)
 
         potential_parent_poses_linearized = self._linearize_potential_parent_poses_map(potential_parent_poses_map)
 
@@ -308,7 +308,9 @@ class TopologyBuilder:
         weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
                               dtype=tf.float32)
 
-        tf.summary.histogram('pose_transform_weights', weights)
+        # tf.summary.histogram('pose_transform_weights', weights)
+        tf.summary.histogram('pose_transform_weights_determinant', tf.matrix_determinant(weights))
+        tf.summary.histogram('mean_pose_transform_weights_determinant', tf.reduce_mean(tf.matrix_determinant(weights)))
 
         tf.add_to_collection('weights', weights)
 
