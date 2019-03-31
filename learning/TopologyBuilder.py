@@ -252,19 +252,21 @@ class TopologyBuilder:
 
 
     def add_initializer(self, options):
-        if options["type"] == "xavier":
-            self.weight_initializer = self.build_xavier_init(options)
-            return
+        with tf.device('/cpu:0'):
 
-        if options["type"] == "identity":
-            self.weight_initializer = self.build_identity_init(options)
-            return
+            if options["type"] == "xavier":
+                self.weight_initializer = self.build_xavier_init(options)
+                return
 
-        if options["type"] == "normal":
-            self.weight_initializer = self.build_truncated_normal_init(options)
-            return
+            if options["type"] == "identity":
+                self.weight_initializer = self.build_identity_init(options)
+                return
 
-        raise UnknownInitializerException()
+            if options["type"] == "normal":
+                self.weight_initializer = self.build_truncated_normal_init(options)
+                return
+
+            raise UnknownInitializerException()
 
     def build_xavier_init(self, options):
 
