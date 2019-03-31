@@ -873,8 +873,9 @@ class MatrixCapsNet:
             [_, child_count, parent_count, pose_element_count] = numpy_shape_ct(children_per_potential_parent_pose_vectors)
             batch_size = tf.shape(children_per_potential_parent_pose_vectors)[0]
 
-            beta_u = tf.get_variable('beta_u', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
-            beta_a = tf.get_variable('beta_a', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
+            with tf.device('/cpu:0'):
+                beta_u = tf.get_variable('beta_u', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
+                beta_a = tf.get_variable('beta_a', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
 
             initial_child_parent_assignment_weights = tf.ones([batch_size, child_count, parent_count, 1], tf.float32) / float(parent_count)
 
@@ -1140,7 +1141,8 @@ class MatrixCapsNet:
         return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
-        example_counter = tf.get_variable(name='example_counter', initializer=tf.constant(float(0)), trainable=False, dtype=tf.float32)
+        with tf.device('/cpu:0'):
+            example_counter = tf.get_variable(name='example_counter', initializer=tf.constant(float(0)), trainable=False, dtype=tf.float32)
 
         example_counter = tf.cond(is_training,
                                   lambda: example_counter.assign(example_counter + batch_size, use_locking=True),
@@ -1161,7 +1163,8 @@ class MatrixCapsNet:
         return current_value
 
     def increasing_value(self, start, increase, is_training):
-        value = tf.get_variable('increasing_value', initializer=tf.constant(float(start)), trainable=False, dtype=tf.float32)
+        with tf.device('/cpu:0'):
+            value = tf.get_variable('increasing_value', initializer=tf.constant(float(start)), trainable=False, dtype=tf.float32)
         increase = tf.constant(float(increase), dtype=tf.float32)
         value = tf.cond(is_training, lambda: value.assign(value + increase), lambda: value)
 

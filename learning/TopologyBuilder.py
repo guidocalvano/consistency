@@ -305,7 +305,8 @@ class TopologyBuilder:
 
     def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
 
-        weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
+        with tf.device('/cpu:0'):
+            weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
                               dtype=tf.float32)
 
         # tf.summary.histogram('pose_transform_weights', weights)
