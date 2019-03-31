@@ -1,6 +1,6 @@
 {
   "example_count": 19440000,
-  "batch_size": 98,
+  "batch_size": 51,
   "save_summary_count": 15,
   "eval_steps": 50,
 
@@ -9,7 +9,7 @@
   "architecture": "build_default_architecture",
   "initialization": {
     "type": "identity",
-    "uniform": 0.3
+    "uniform": 0.03
   },
 
   "regularization": {

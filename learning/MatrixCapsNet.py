@@ -670,6 +670,8 @@ class MatrixCapsNet:
             activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count, output_count=output_count)
             pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system, output_count=output_count)
 
+            tf.summary.histogram('primary_poses_determinant', tf.linalg.det(pose_layer))
+
             tf.summary.histogram('primary caps activations', activation_layer)
             # self.activation_layers.append(activation_layer)
         return [activation_layer, pose_layer]

@@ -1605,15 +1605,19 @@ class TestTopologyBuilder(tf.test.TestCase):
 
         self.topology.finish({
             "type": "identity",
-            "uniform": .5
+            "uniform": .03
         })
 
         output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
+        output_determinant = tf.matrix_determinant(output)
+        mean_determinant = tf.reduce_mean(output_determinant)
 
         with self.test_session() as sess:
             sess.run(tf.global_variables_initializer())
 
             output_values = sess.run(output)
+            output_determinant_values = sess.run(output_determinant)
+            mean_determinant_values = sess.run(mean_determinant)
 
             output_matrix_list = output_values.reshape(-1, 4, 4)
 
@@ -1624,6 +1628,7 @@ class TestTopologyBuilder(tf.test.TestCase):
             self.assertTrue(np.abs(np.mean(random_values)) < .1 )
             self.assertTrue(np.abs(np.mean(np.abs(random_values)) - 0.25) < .1)
             self.assertTrue(list(output_values.shape) == tiled_weight_shape)
+
 
     def test_build_wrong_init(self):
         input_count, output_count = 2, 3
