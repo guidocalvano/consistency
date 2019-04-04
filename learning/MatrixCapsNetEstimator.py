@@ -87,6 +87,7 @@ class MatrixCapsNetEstimator:
                         tf.train.get_global_step())
 
             tf.summary.histogram('predicted_classes', predicted_classes)
+            tf.summary.histogram('labels', predicted_classes)
 
             # Compute evaluation metrics.
             accuracy = tf.metrics.accuracy(labels=labels,

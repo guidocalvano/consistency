@@ -919,7 +919,7 @@ class MatrixCapsNet:
                     # rather than parents of children
 
             tf.summary.histogram('final_routing', child_parent_assignment_weights)
-            tf.summary.scalar('final_routing_sum', tf.reduce_sum(child_parent_assignment_weights))
+            tf.summary.scalar('final_routing_sum_per_parent', tf.reduce_sum(child_parent_assignment_weights, axis=parent_axis))
 
             tf.add_to_collection('next_routing_state', child_parent_assignment_weights)
 
