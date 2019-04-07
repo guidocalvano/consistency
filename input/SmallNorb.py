@@ -362,7 +362,7 @@ class SmallNorb:
 
     def default_training_set(self):
 
-        input_data = self.default_preprocessed_training_input(tf.constant(self.training["examples"]))
+        input_data = self.default_preprocessed_training_input(tf.constant(self.training["examples"], dtype=tf.float16))
         output_data = tf.constant(self.training["labels"])
 
         return (input_data, output_data)

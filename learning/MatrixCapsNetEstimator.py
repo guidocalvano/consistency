@@ -80,7 +80,8 @@ class MatrixCapsNetEstimator:
 
             processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
 
-            optimizer = tf.train.AdamOptimizer()
+            # To make float16 training possible epsilon had to be increased
+            optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
 
             #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
             train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,

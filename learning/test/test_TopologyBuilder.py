@@ -1455,7 +1455,7 @@ class TestTopologyBuilder(tf.test.TestCase):
         axial_system_input = np.random.random([batch_size, input_count, pose_row_count, pose_column_count])
         axial_system_input[:, :, :, 3] = np.array([0.0, 0.0, 0.0, 1.0])
 
-        output = self.topology._compute_potential_parent_poses_map(tf.constant(axial_system_input, dtype=tf.float32))
+        output = self.topology._compute_potential_parent_poses_map(tf.constant(axial_system_input, dtype=tf.float16))
 
         with self.test_session() as sess:
             sess.run(tf.global_variables_initializer())
@@ -1609,7 +1609,7 @@ class TestTopologyBuilder(tf.test.TestCase):
         })
 
         output = self.topology.map_weights_to_parent_kernels(batch_size, 4, 4)
-        output_determinant = tf.matrix_determinant(output)
+        output_determinant = tf.matrix_determinant(tf.cast(output, dtype=tf.float32))
         mean_determinant = tf.reduce_mean(output_determinant)
 
         with self.test_session() as sess:

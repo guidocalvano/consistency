@@ -27,7 +27,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         routing_state = None
         is_training = tf.constant(True)
 
-        input_layer = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
+        input_layer = tf.placeholder(tf.float16, shape=[None, 32, 32, 1])
 
         network_output, next_routing_state, _ = MatrixCapsNet().build_default_architecture(input_layer, iteration_count, routing_state)
 
@@ -218,7 +218,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         random_input_images = np.random.normal(np.zeros([3, 32, 32, 1]))
 
-        input_layer = tf.placeholder('float', shape=[None, 32, 32, 1])
+        input_layer = tf.placeholder(shape=[None, 32, 32, 1], dtype=tf.float16)
 
         mcn = MatrixCapsNet()
 
@@ -577,8 +577,9 @@ class TestMatrixCapsNet(tf.test.TestCase):
             "type": "xavier",
             "kernel": True
         })
-        mock_activations   = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 1]))
-        mock_pose_matrices = tf.Variable(tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 4, 4]))
+        mock_activations   = tf.get_variable(name='mock_activations', initializer=tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 1], dtype=tf.float32), dtype=tf.float32, trainable=False)
+        mock_pose_matrices = tf.get_variable(name='mock_pose_matrices', initializer=tf.truncated_normal([batch_size] + spatial_shape + [input_feature_count, 4, 4], 0, np.sqrt(1.0 / 20.0),
+                                                             dtype=tf.float16), dtype=tf.float16, trainable=False)
 
         mcn = MatrixCapsNet()
 
@@ -597,7 +598,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         loss = tf.losses.mean_squared_error(correct_activations, output_activations)
 
-        optimizer = tf.train.AdamOptimizer()
+        optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
         train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
 
         self.sess.run(tf.global_variables_initializer())
@@ -605,7 +606,6 @@ class TestMatrixCapsNet(tf.test.TestCase):
         activation_values = self.sess.run([output_activations])[0]
 
         self.assertFiniteAndShape(activation_values, [batch_size] + topology.parent_shape() + [1], "activation values should be finite after training")
-
 
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):
         self.assertTrue(np.isfinite(tensor_array).all(), message + ": does not have finite data")

@@ -152,7 +152,7 @@ class TopologyBuilder:
         potential_parent_poses_map = self._compute_potential_parent_poses_map(input_layer_poses)
 
         # tf.summary.histogram('potential_parent_poses_map', potential_parent_poses_map)
-        tf.summary.histogram('potential_parent_poses_determinant', tf.linalg.det(potential_parent_poses_map))
+        tf.summary.histogram('potential_parent_poses_determinant', tf.linalg.det(tf.cast(potential_parent_poses_map, tf.float32)))
 
         potential_parent_poses_map = self.add_coordinates(potential_parent_poses_map)
 
@@ -281,12 +281,12 @@ class TopologyBuilder:
         #@TODO: Make the standard deviation take into account the number of outputs per node
         xavierish_standard_deviation = np.sqrt(1.0 / input_count_per_node)  # -ish because technically xavier init is for tanh not sigmoid
 
-        return tf.truncated_normal(self.complete_weight_shape(), stddev=xavierish_standard_deviation)
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=xavierish_standard_deviation, dtype=tf.float16)
 
     def build_identity_init(self, options):
-        noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"])
+        noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"], dtype=tf.float16)
 
-        eye = tf.eye(self.pose_width, self.pose_height - int(self.is_axial_system))
+        eye = tf.eye(self.pose_width, self.pose_height - int(self.is_axial_system), dtype=tf.float16)
 
         eye_shape = np.ones([len(noise.get_shape().as_list())])
         eye_shape[[-2, -1]] =  eye.get_shape().as_list()
@@ -299,7 +299,7 @@ class TopologyBuilder:
 
         next_std = options["deviation"].pop(0)
 
-        return tf.truncated_normal(self.complete_weight_shape(), stddev=next_std)
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=next_std, dtype=tf.float16)
 
 
     def complete_weight_shape(self):
@@ -309,13 +309,7 @@ class TopologyBuilder:
 
         with tf.device('/cpu:0'):
             weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
-                              dtype=tf.float32)
-
-        # tf.summary.histogram('pose_transform_weights', weights)
-        tf.summary.histogram('pose_transform_weights_determinant', tf.matrix_determinant(weights))
-        tf.summary.histogram('mean_pose_transform_weights_determinant', tf.reduce_mean(tf.matrix_determinant(weights)))
-
-        tf.add_to_collection('weights', weights)
+                              dtype=tf.float16)
 
         if self.is_axial_system:
 
@@ -324,7 +318,7 @@ class TopologyBuilder:
             tilable_vector_type_shape = [1] * len(tiling_vector_type_shape)
             tilable_vector_type_shape[-2] = pose_width
 
-            vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float32)
+            vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float16)
 
             concatenatable_vector_type_column = tf.tile(tf.reshape(vector_type_column, tilable_vector_type_shape), tiling_vector_type_shape)
 
@@ -336,6 +330,14 @@ class TopologyBuilder:
             weights = tf.reshape(flattened_weights, weights.shape[:-2].as_list() + [self.pose_width, self.pose_height])
 
             # weights = tf.concat([weights, concatenatable_vector_type_column], axis=-1)
+
+
+        # tf.summary.histogram('pose_transform_weights', weights)
+        weight_determinant = tf.matrix_determinant(tf.cast(weights, tf.float32))
+        tf.summary.histogram('pose_transform_weights_determinant', weight_determinant)
+        tf.summary.histogram('mean_pose_transform_weights_determinant', tf.reduce_mean(weight_determinant))
+
+        tf.add_to_collection('weights', weights)
 
         kernel_tile_dimensions = [batch_size] + self.weight_tiling + [1, 1]
 

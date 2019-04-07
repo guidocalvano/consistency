@@ -582,11 +582,21 @@ class MatrixCapsNet:
             elements_per_pose = 12
             pose_axis_element_count = 3
 
+        # OLD RATIONALE
         # output of pose layer goes through linear activation
         # so now halving of stdev not necessary for output, but input did go through relu so must be halved
         # Also, outputs are edge matrices that can be seen as neurons in a 4 weight x 4 neuron layer,
         # so each number of outputs must be multiplied by 4
-        target_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count * 4.0))
+        # OLD SOLUTION
+        # target_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count * 4.0))
+
+        #NEW SOLUTION
+        # the objective of this standard deviation is to put the determinant of the output poses
+        # near 1.0, thus centering outputs and gradients in a region of the number line that is
+        # described with many bits using float values.
+        # The underlying assumption for why this would work is that the routing
+        # algorithm is invariant to scale. This assumption might not actually hold.
+        target_stddev = np.sqrt(1.0 / 20.0)
 
         # if "deviation" in self.weight_init_options:
         #     target_stddev = self.weight_init_options["deviation"].pop(0)
@@ -670,11 +680,11 @@ class MatrixCapsNet:
             activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count, output_count=output_count)
             pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system, output_count=output_count)
 
-            tf.summary.histogram('primary_poses_determinant', tf.linalg.det(pose_layer))
+            tf.summary.histogram('primary_poses_determinant', tf.linalg.det(tf.cast(pose_layer, tf.float32)))
 
             tf.summary.histogram('primary caps activations', activation_layer)
             # self.activation_layers.append(activation_layer)
-        return [activation_layer, pose_layer]
+        return [tf.cast(activation_layer, dtype=tf.float32), pose_layer]
 
     def build_convolutional_capsule_layer(self,
                                           input_layer_list,
@@ -983,7 +993,7 @@ class MatrixCapsNet:
             assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
             # [batch, 1, parent, likely_pose_element_standard_deviation]
-            likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance) + sys.float_info.epsilon
+            likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance + sys.float_info.epsilon) + sys.float_info.epsilon
             assert (numpy_shape_ct(likely_parent_pose_deviation)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
             # inactivity parent per for child capsules
@@ -1119,7 +1129,7 @@ class MatrixCapsNet:
 
             parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
                 child_activation_vector,
-                potential_parent_pose_vectors,
+                tf.cast(potential_parent_pose_vectors, dtype=tf.float32),
                 final_steepness_lambda,
                 iteration_count,
                 routing_state,
@@ -1138,7 +1148,7 @@ class MatrixCapsNet:
 
         self.activation_layers.append(mapped_parent_as_child_activations)
 
-        return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
+        return mapped_parent_as_child_activations, tf.cast(mapped_parent_as_child_pose_matrices, dtype=tf.float16)
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
         with tf.device('/cpu:0'):
