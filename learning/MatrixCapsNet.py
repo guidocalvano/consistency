@@ -894,6 +894,9 @@ class MatrixCapsNet:
 
             child_parent_assignment_weights = initial_child_parent_assignment_weights
 
+            # double check if initial weights are either correctly reset or correctly reused
+            tf.summary.histogram('initial_child_parent_assignment_weights', initial_child_parent_assignment_weights)
+
             with tf.name_scope('expectation_maximization') as scope1:
                 for i in range(iteration_count + 1):
                     steepness_lambda = final_steepness_lambda * (1.0 - tf.pow(0.95, tf.cast(i + 1, tf.float32)))
@@ -904,11 +907,10 @@ class MatrixCapsNet:
                     active_child_parent_assignment_weights = tf.identity(active_child_parent_assignment_weights,
                                                                          name='active_child_parent_assignment_weights')
 
-                    #@TODO make arguments match convolution topology
                     parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance =\
                         self.estimate_parents_layer(
-                            active_child_parent_assignment_weights, #@TODO limit to only children of parent
-                            children_per_potential_parent_pose_vectors, #@TODO limit to only children of parent
+                            active_child_parent_assignment_weights,
+                            children_per_potential_parent_pose_vectors,
                             beta_u,
                             beta_a,
                             steepness_lambda
@@ -917,7 +919,6 @@ class MatrixCapsNet:
                     # the final iteration of this loop will needlessly produce an extra set of nodes using below code,
                     # BUT, this doesn't matter because what is actually computed is determined by dependency analysis of the
                     # graph and the nodes produced below in the final loop are not required for anything and thus ignored
-                    #@TODO make arguments match convolution topology
                     child_parent_assignment_weights = self.estimate_children_layer(
                         parent_activations,
                         likely_parent_pose,
@@ -925,8 +926,10 @@ class MatrixCapsNet:
                         children_per_potential_parent_pose_vectors, #@TODO limit to only parents of children
                         topology
                     )
-                    #@TODO invert child parent assignment weights to contain children of parents
-                    # rather than parents of children
+
+                    tf.summary.histogram('child_parent_assignment_weights_at_' + str(i),
+                                         child_parent_assignment_weights)
+
 
             tf.summary.histogram('final_routing', child_parent_assignment_weights)
             tf.summary.scalar('final_routing_sum_per_parent', tf.reduce_sum(child_parent_assignment_weights, axis=parent_axis))
