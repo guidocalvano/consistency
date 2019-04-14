@@ -31,7 +31,7 @@ class SmallNorb:
 
     def init(self, base_path_training=config.SMALL_NORB_TRAINING, base_path_test=config.SMALL_NORB_TEST):
 
-        unsplit_training_data =  self.load_and_convert_to_internal_representation(base_path_training)
+        unsplit_training_data = self.load_and_convert_to_internal_representation(base_path_training)
 
         split_training_data = self.split_by_objects(unsplit_training_data, config.TRAINING_VALIDATION_RATIO)
 
@@ -183,8 +183,10 @@ class SmallNorb:
         return image_layer
 
     def crop_training_set(self, image_layer):
-        (batch_size, width, height, channel_count) = image_layer.get_shape()
-        cropped_image_layer = tf.random_crop(image_layer, size=[batch_size,32, 32, channel_count])
+        s = tf.shape(image_layer)
+        (batch_size, width, height, channel_count) = s[0], s[1], s[2], s[3]
+
+        cropped_image_layer = tf.random_crop(image_layer, size=[batch_size, 32, 32, channel_count])
 
         return cropped_image_layer
 
@@ -202,7 +204,7 @@ class SmallNorb:
         cropped = self.crop_test_set(image_layer)
         return cropped
 
-    def default_preprocessed_training_input(self, image_layer):
+    def default_training_input_preprocessing(self, image_layer):
         cropped_image_layer = self.crop_training_set(image_layer)
         randomized_colors = self.randomize_color_data(cropped_image_layer)
 
@@ -362,10 +364,83 @@ class SmallNorb:
 
     def default_training_set(self):
 
-        input_data = self.default_preprocessed_training_input(tf.constant(self.training["examples"], dtype=tf.float16))
+        input_data = self.default_training_input_preprocessing(tf.constant(self.training["examples"], dtype=tf.float16))
         output_data = tf.constant(self.training["labels"])
 
         return (input_data, output_data)
+
+    def default_training_set_as_tf_data_set(self, epoch_count, batch_size):
+
+        return tf.data.Dataset.from_tensor_slices(self.default_training_set())\
+            .shuffle(self.training["examples"].shape[0])\
+            .repeat(epoch_count)\
+            .batch(batch_size)
+
+    def stratified_training_set_as_tf_data_set(self, epoch_count, batch_size):
+
+        return tf.data.Dataset.from_generator(
+            lambda: self.stratifified_example_generator(self.training["examples"], self.training["labels"]),
+                                                        (tf.float32, tf.int32),
+                                                        (tf.TensorShape(self.training["examples"].shape[1:]), tf.TensorShape([]))) \
+                .repeat(epoch_count)\
+                .batch(batch_size)\
+                .map(lambda examples, labels:
+                                   (self.default_training_input_preprocessing(examples), labels))\
+                .prefetch(1)
+
+    def randomly_stratified_label_indices(self, labels):
+        print('recomputing stratification')
+        label_ids = np.arange(labels.shape[0])
+        label_groups = []
+        label_types = np.unique(labels)
+        label_type_count = np.zeros(label_types.shape)
+
+        # split labels into groups
+        for i in range(label_types.shape[0]):
+
+            label_group = label_ids[labels == label_types[i]]
+            np.random.shuffle(label_group)
+            label_type_count[i] = label_group.shape[0]
+
+            label_groups.append(list(label_group))
+
+            # shuffle each label group
+
+        stratified_label_ids = np.ones(labels.shape, dtype=np.int32) * -1
+
+        label_group_cursor = np.zeros(label_types.shape, dtype=np.int32)
+
+        for j in range(labels.shape[0]):
+            progress_percentage = label_group_cursor / label_type_count
+            next_type_index = np.argmin(progress_percentage)
+            group_cursor = label_group_cursor[next_type_index]
+            stratified_label_ids[j] = label_groups[next_type_index][group_cursor]
+            label_group_cursor[next_type_index] = label_group_cursor[next_type_index] + 1
+
+        return stratified_label_ids
+
+    def stratified_index_generator(self, labels):
+        while(True):
+            next_stratification = self.randomly_stratified_label_indices(labels)
+            print('restratified')
+
+            for index in next_stratification:
+                print('yielding index: ' + str(index))
+
+                yield index
+
+    def stratifified_example_generator(self, images, labels):
+        example_indices = self.stratified_index_generator(labels)
+        while(True):
+            index = next(example_indices)
+
+            result = (images[index], labels[index])
+            print('shapes')
+            print(result[0].shape)
+            print(result[1].shape)
+
+            yield result
+
 
     def randomly_reduce_training_set(self, count):
 

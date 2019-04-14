@@ -343,6 +343,9 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
             self.assertTrue(v == 3.0, "counter should be three")
 
+    def test_stratify(self):
+        self.assertTrue(False, "I still didn't test if the stratification parameter works correctly. I will verify manually through tensorboard")
+
     def assertFiniteAndShape(self, tensor_array, tensor_shape, message):
         self.assertTrue(np.isfinite(tensor_array).all(), message + ": does not have finite data")
         self.assertTrue((np.array(tensor_array.shape) ==

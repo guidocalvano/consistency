@@ -3,6 +3,8 @@ import tensorflow as tf
 import os
 from input.SmallNorb import SmallNorb
 from input.MatFileReaderWriter import MatFileReaderWriter
+import scipy as sp
+import scipy.stats as stats
 
 
 class TestSmallNorb(tf.test.TestCase):
@@ -69,6 +71,10 @@ class TestSmallNorb(tf.test.TestCase):
         MatFileReaderWriter.write_mat_file(self.test_labels_file_path, self.raw_test_labels)
         MatFileReaderWriter.write_mat_file(self.test_info_file_path, self.raw_test_info)
 
+        self.sess = tf.Session()
+
+        self.guard = self.sess.as_default()
+        self.guard.__enter__()
 
     def tearDown(self):
 
@@ -82,6 +88,12 @@ class TestSmallNorb(tf.test.TestCase):
         ]:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+        if not hasattr(self, "guard"):
+            return
+        tf.reset_default_graph()
+        self.guard.__exit__(None, None, None)
+        tf.reset_default_graph()
 
     def test_internal_representation(self):
         sn = SmallNorb().init(self.training_base_path, self.test_base_path)
@@ -148,6 +160,74 @@ class TestSmallNorb(tf.test.TestCase):
         # test if test set has the right number of elements
         self.assertTrue(test_set[0].shape[0].value == self.non_stereo_scopic_example_count, "tests not implemented")
 
+    def test_stratification(self):
+
+        sn = SmallNorb().init(self.training_base_path, self.test_base_path)
+
+        # hack the training set to have exactly 12 elements:
+        # this might go wrong because due to stratification of validation vs testing set the number of training
+        # elements might not reach 12. In production this is not a problem; for a great number of examples
+        # the algorithm should converge towards the correct ratio of training and validation examples
+        sn.training["examples"] = sn.training["examples"][:9]
+        sn.training["labels"] = sn.training["labels"][:9]
+
+        training_set = sn.stratified_training_set_as_tf_data_set(2, 3)
+        iterator = training_set.make_initializable_iterator()
+        self.sess.run(iterator.initializer)
+        first_batch = self.sess.run(iterator.get_next())
+        second_batch = self.sess.run(iterator.get_next())
+        third_batch = self.sess.run(iterator.get_next())
+
+        fourth_batch = self.sess.run(iterator.get_next())
+        fifth_batch = self.sess.run(iterator.get_next())
+        sixth_batch = self.sess.run(iterator.get_next())
+
+        # after three batches the next epoch starts, which should be stratified the same way
+        self.assertTrue(np.all(first_batch[1] == fourth_batch[1]))
+        self.assertTrue(np.all(second_batch[1] == fifth_batch[1]))
+        self.assertTrue(np.all(third_batch[1] == sixth_batch[1]))
+
+        self.assertTrue(list(np.sort(np.concatenate([first_batch[1], second_batch[1], third_batch[1]]))) == list(np.sort(sn.training["labels"])))
+        self.assertTrue(list(np.concatenate([first_batch[1], second_batch[1], third_batch[1]])) != list(sn.training["labels"]))
+
+    def test_training_set_stratification(self):
+        # training data will be ignored
+        sn = SmallNorb().init(self.training_base_path, self.test_base_path)
+
+        labels = np.arange(5).repeat(10)
+        images = np.arange(50)
+
+        g = sn.stratifified_example_generator(images, labels)
+
+        first_epoch = ([], [])
+        second_epoch = ([], [])
+
+        for i in range(50):
+            n = next(g)
+
+            first_epoch[0].append(n[0])
+            first_epoch[1].append(n[1])
+
+        for i in range(50):
+            n = next(g)
+
+            second_epoch[0].append(n[0])
+            second_epoch[1].append(n[1])
+
+        self.assertTrue(first_epoch[1] == list(np.tile(np.arange(5), 10)))
+        self.assertTrue(first_epoch[1] == second_epoch[1])
+        self.assertTrue(not(first_epoch[1] == list(labels)))
+        self.assertTrue(not(first_epoch[0] == second_epoch[0]))
+
+        # assert that each stratum is randomly sorted
+        self.assertTrue(stats.spearmanr(np.array(first_epoch[0][0::5]), np.arange(10))[1] > .05)
+        self.assertTrue(stats.spearmanr(np.array(second_epoch[0][1::5]), np.arange(10))[1] > .05)
+        self.assertTrue(stats.spearmanr(np.array(first_epoch[0][4::5]), np.arange(10))[1] > .05)
+
+        self.assertTrue(np.unique(first_epoch[0]).shape[0] == 50)
+        self.assertTrue(np.unique(second_epoch[0]).shape[0] == 50)
+
+        pass
 
     def test_trackable_stream_data_set_construction(self):
         sn = SmallNorb().init(self.training_base_path, self.test_base_path)

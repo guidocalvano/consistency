@@ -270,7 +270,7 @@ class MatrixCapsNetEstimator:
             average_grads.append(grad_and_var)
         return average_grads
 
-    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, eval_steps=100, model_path=config.TF_MODEL_PATH):
+    def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, eval_steps=100, model_path=config.TF_MODEL_PATH, must_stratify_batches=True):
 
         if max_steps is None:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
@@ -278,10 +278,12 @@ class MatrixCapsNetEstimator:
 
         estimator = self.create_estimator(small_norb, model_path, epoch_count, save_summary_steps=self.save_summary_steps)
 
-        train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
-            .shuffle(100000)\
-            .repeat(epoch_count)\
-            .batch(batch_size)
+
+        train_fn = lambda: small_norb.default_training_set_as_tf_data_set(epoch_count, batch_size)
+
+        if must_stratify_batches:
+            train_fn = lambda: small_norb.stratified_training_set_as_tf_data_set(epoch_count, batch_size)
+
         validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
         test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
 
@@ -331,17 +333,18 @@ class MatrixCapsNetEstimator:
 
         return estimator
 
-    def train(self, small_norb, model_path, batch_size, epoch_count, max_steps):
+    def train(self, small_norb, model_path, batch_size, epoch_count, max_steps, must_stratify_batches=True):
         if max_steps is None:
             batch_count_per_epoch = small_norb.training_example_count() / batch_size
             max_steps = batch_count_per_epoch * epoch_count
 
         estimator = self.create_estimator(small_norb, model_path, epoch_count)
 
-        train_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_training_set())\
-            .shuffle(100000)\
-            .repeat(epoch_count)\
-            .batch(batch_size)
+        train_fn = lambda: small_norb.default_training_set_as_tf_data_set(epoch_count, batch_size)
+
+        if must_stratify_batches:
+            train_fn = lambda: small_norb.stratified_training_set_as_tf_data_set(epoch_count, batch_size)
+
         validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
 
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
