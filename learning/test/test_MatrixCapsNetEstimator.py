@@ -320,8 +320,11 @@ class TestMatrixCapsNetEstimator(tf.test.TestCase):
 
         sess = tf.Session()
 
-        zero_counter = MatrixCapsNetEstimator.counter(tf.constant(0.0), tf.constant(True))
-        increase_one_counter = MatrixCapsNetEstimator.counter(tf.constant(1.0), tf.constant(True))
+        with tf.variable_scope('zero'):
+            zero_counter = MatrixCapsNetEstimator.counter(tf.constant(0.0), tf.constant(True))
+
+        with tf.variable_scope('one'):
+            increase_one_counter = MatrixCapsNetEstimator.counter(tf.constant(1.0), tf.constant(True))
 
         with sess.as_default():
 

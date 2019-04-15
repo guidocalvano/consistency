@@ -184,7 +184,7 @@ class SmallNorb:
 
     def crop_training_set(self, image_layer):
         s = tf.shape(image_layer)
-        (batch_size, width, height, channel_count) = s[0], s[1], s[2], s[3]
+        (batch_size, width, height, channel_count) = s[0], s[1], s[2], image_layer.get_shape()[3]
 
         cropped_image_layer = tf.random_crop(image_layer, size=[batch_size, 32, 32, channel_count])
 
@@ -201,14 +201,14 @@ class SmallNorb:
         return cropped_image_layer
 
     def default_preprocessed_test_input(self, image_layer):
-        cropped = self.crop_test_set(image_layer)
+        cropped = tf.cast(self.crop_test_set(image_layer), dtype=tf.float16)
         return cropped
 
     def default_training_input_preprocessing(self, image_layer):
         cropped_image_layer = self.crop_training_set(image_layer)
         randomized_colors = self.randomize_color_data(cropped_image_layer)
 
-        return randomized_colors
+        return tf.cast(randomized_colors, dtype=tf.float16)
 
     # presentation
 
@@ -379,8 +379,8 @@ class SmallNorb:
     def stratified_training_set_as_tf_data_set(self, epoch_count, batch_size):
 
         return tf.data.Dataset.from_generator(
-            lambda: self.stratifified_example_generator(self.training["examples"], self.training["labels"]),
-                                                        (tf.float32, tf.int32),
+            lambda: self.stratifified_example_generator(self.training["examples"].astype(np.float16), self.training["labels"]),
+                                                        (tf.float16, tf.int32),
                                                         (tf.TensorShape(self.training["examples"].shape[1:]), tf.TensorShape([]))) \
                 .repeat(epoch_count)\
                 .batch(batch_size)\
