@@ -8,7 +8,7 @@ class UnknownInitializerException(Exception):
 
 class TopologyBuilder:
 
-    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=8.0):
+    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=8.0, dtype=tf.float32):
 
         self.children_shape = []
         self.child_index_dimension_count = 0
@@ -26,6 +26,8 @@ class TopologyBuilder:
         self.pose_height = pose_height
 
         self.coordinate_addition_scale = coordinate_addition_scale
+
+        self.dtype = dtype
 
         return self
 
@@ -163,17 +165,65 @@ class TopologyBuilder:
         return potential_parent_poses_linearized
 
     def _compute_potential_parent_poses_map(self, input_layer_poses):
+
+        if self.dtype == tf.float32:
+            return self._compute_potential_parent_poses_map_float32(input_layer_poses)
+
+        raise Exception('datatype not supported')
+
+    def _compute_potential_parent_poses_map_float32(self, input_layer_poses):
         s = tf.shape(input_layer_poses)
         batch_size = s[0]
         pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
 
+        # in a low precision learning set up here the cale up must take place
         kernel_mapped_input = self.map_input_layer_to_parent_kernels(input_layer_poses)
         kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)
 
         # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
         potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights)
 
+        # scale down and cast to normal range here
         return potential_parent_poses_map
+
+
+    def _compute_potential_parent_poses_map_float16(self, input_layer_poses):
+        s = tf.shape(input_layer_poses)
+        batch_size = s[0]
+        pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
+
+        # in a low precision learning set up here the cale up must take place
+        kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
+        kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
+
+        # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
+        # add zeros in float32 to make use of tensor cores
+        # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
+        potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
+                                     tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
+
+        # scale down and cast to normal range here
+        return potential_parent_poses_map
+
+
+    def _compute_potential_parent_poses_map_int8(self, input_layer_poses):
+        s = tf.shape(input_layer_poses)
+        batch_size = s[0]
+        pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
+
+        # in a low precision learning set up here the cale up must take place
+        kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
+        kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
+
+        # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
+        # add zeros in float32 to make use of tensor cores
+        # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
+        potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
+                                     tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
+
+        # scale down and cast to normal range here
+        return potential_parent_poses_map
+
 
     def _linearize_potential_parent_poses_map(self, potential_parent_poses_map):
 
@@ -281,12 +331,12 @@ class TopologyBuilder:
         #@TODO: Make the standard deviation take into account the number of outputs per node
         xavierish_standard_deviation = np.sqrt(1.0 / input_count_per_node)  # -ish because technically xavier init is for tanh not sigmoid
 
-        return tf.truncated_normal(self.complete_weight_shape(), stddev=xavierish_standard_deviation, dtype=tf.float16)
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=xavierish_standard_deviation, dtype=tf.float32)
 
     def build_identity_init(self, options):
-        noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"], dtype=tf.float16)
+        noise = tf.random_uniform(self.complete_weight_shape(), -options["uniform"], options["uniform"], dtype=tf.float32)
 
-        eye = tf.eye(self.pose_width, self.pose_height - int(self.is_axial_system), dtype=tf.float16)
+        eye = tf.eye(self.pose_width, self.pose_height - int(self.is_axial_system), dtype=tf.float32)
 
         eye_shape = np.ones([len(noise.get_shape().as_list())])
         eye_shape[[-2, -1]] =  eye.get_shape().as_list()
@@ -299,17 +349,17 @@ class TopologyBuilder:
 
         next_std = options["deviation"].pop(0)
 
-        return tf.truncated_normal(self.complete_weight_shape(), stddev=next_std, dtype=tf.float16)
+        return tf.truncated_normal(self.complete_weight_shape(), stddev=next_std, dtype=tf.float32)
 
 
     def complete_weight_shape(self):
         return [1] + self.weight_shape + [self.pose_width, self.pose_height - int(self.is_axial_system)]
 
-    def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height):
+    def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height, scale_factor=1.0):
 
         with tf.device('/cpu:0'):
             weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
-                              dtype=tf.float16)
+                              dtype=tf.float32)
 
         if self.is_axial_system:
 
@@ -318,7 +368,7 @@ class TopologyBuilder:
             tilable_vector_type_shape = [1] * len(tiling_vector_type_shape)
             tilable_vector_type_shape[-2] = pose_width
 
-            vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float16)
+            vector_type_column = tf.constant([0.0, 0.0, 0.0, 1.0], dtype=tf.float32)
 
             concatenatable_vector_type_column = tf.tile(tf.reshape(vector_type_column, tilable_vector_type_shape), tiling_vector_type_shape)
 
@@ -340,6 +390,15 @@ class TopologyBuilder:
         tf.add_to_collection('weights', weights)
 
         kernel_tile_dimensions = [batch_size] + self.weight_tiling + [1, 1]
+
+        # do scaling up for low precision learning here
+        if scale_factor != 1.0:
+            weights = weights * scale_factor
+
+        if self.dtype != tf.float32:
+            weights = tf.cast(weights, self.dtype)
+
+        # now tile the weights as needed
 
         tiled_weights = tf.tile(weights, kernel_tile_dimensions)
 

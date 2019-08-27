@@ -11,7 +11,7 @@ class MatrixCapsNetEstimator:
     def spread_loss(
             correct_one_hot,  # [batch, class]
             predicted_one_hot,   # [batch, class]
-            margin # float
+            margin  # float
     ):
         class_axis = 1
 
@@ -42,7 +42,8 @@ class MatrixCapsNetEstimator:
              initialization=None,
              regularization=None,
              save_summary_steps=500,
-             eval_steps=100
+             eval_steps=100,
+             dtype=tf.float32
         ):
         self.loss_fn = loss_fn
         self.architecture = architecture
@@ -51,6 +52,7 @@ class MatrixCapsNetEstimator:
 
         self.save_summary_steps = save_summary_steps
         self.eval_steps = eval_steps
+        self.dtype=dtype
 
         return self
 

@@ -7,7 +7,7 @@ import os.path
 import datetime
 from Configuration import Configuration
 import sys
-
+import tensorflow as tf
 
 def run(result_name, config, sn):
     if config["reduce_to_two_examples"]:
@@ -27,7 +27,8 @@ def run(result_name, config, sn):
         initialization=config["initialization"],
         regularization=config["regularization"],
         save_summary_steps=save_summary_steps,
-        eval_steps=config["eval_steps"]
+        eval_steps=config["eval_steps"],
+        dtype={"float32": tf.float32, "float16": tf.float16}[config["dtype"]]
     )
 
     results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config["tf_model_dir"], result_name))

@@ -201,14 +201,14 @@ class SmallNorb:
         return cropped_image_layer
 
     def default_preprocessed_test_input(self, image_layer):
-        cropped = tf.cast(self.crop_test_set(image_layer), dtype=tf.float16)
+        cropped = tf.cast(self.crop_test_set(image_layer), dtype=tf.float32)
         return cropped
 
     def default_training_input_preprocessing(self, image_layer):
         cropped_image_layer = self.crop_training_set(image_layer)
         randomized_colors = self.randomize_color_data(cropped_image_layer)
 
-        return tf.cast(randomized_colors, dtype=tf.float16)
+        return tf.cast(randomized_colors, dtype=tf.float32)
 
     # presentation
 
@@ -364,7 +364,7 @@ class SmallNorb:
 
     def default_training_set(self):
 
-        input_data = self.default_training_input_preprocessing(tf.constant(self.training["examples"], dtype=tf.float16))
+        input_data = self.default_training_input_preprocessing(tf.constant(self.training["examples"], dtype=tf.float32))
         output_data = tf.constant(self.training["labels"])
 
         return (input_data, output_data)
@@ -435,9 +435,6 @@ class SmallNorb:
             index = next(example_indices)
 
             result = (images[index], labels[index])
-            print('shapes')
-            print(result[0].shape)
-            print(result[1].shape)
 
             yield result
 

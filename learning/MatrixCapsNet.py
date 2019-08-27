@@ -32,7 +32,7 @@ class MatrixCapsNet:
 
     '''
 
-    def __init__(self):
+    def __init__(self, dtype):
         self.weight_init_options = {
             "type": "xavier",
             "matrix": True
@@ -43,6 +43,9 @@ class MatrixCapsNet:
         }
 
         self.activation_layers = []
+
+        self.dtype = dtype
+
 
     def set_init_options(self, init_options):
         self.weight_init_options = init_options
@@ -80,7 +83,7 @@ class MatrixCapsNet:
                 )
 
             with tf.variable_scope('layerC') as scope3:
-                c_topology = TopologyBuilder().init()
+                c_topology = TopologyBuilder().init(dtype=self.dtype)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -95,7 +98,7 @@ class MatrixCapsNet:
                 )
 
             with tf.variable_scope('layerD') as scope3:
-                d_topology = TopologyBuilder().init()
+                d_topology = TopologyBuilder().init(dtype=self.dtype)
                 d_topology.set_is_axial_system(is_axial)
                 d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
                 d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -111,7 +114,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerAggregation') as scope3:
 
-                aggregating_topology = TopologyBuilder().init()
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -160,7 +163,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerC') as scope1:
 
-                c_topology = TopologyBuilder().init()
+                c_topology = TopologyBuilder().init(dtype=self.dtype)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -176,7 +179,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerAggregation') as scope1:
 
-                aggregating_topology = TopologyBuilder().init()
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -216,7 +219,7 @@ class MatrixCapsNet:
     #         # number of capsules is defined by number of texture patches
     #         primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
     #
-    #         c_topology = TopologyBuilder().init()
+    #         c_topology = TopologyBuilder().init(dtype=self.dtype)
     #         c_topology.set_is_axial_system(True)
     #         c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
     #         c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -232,7 +235,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         d_topology = TopologyBuilder().init()
+    #         d_topology = TopologyBuilder().init(dtype=self.dtype)
     #         d_topology.set_is_axial_system(True)
     #         d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
     #         d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -248,7 +251,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         aggregating_topology = TopologyBuilder().init()
+    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
     #         aggregating_topology.set_is_axial_system(True)
     #         aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
     #         aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -304,7 +307,7 @@ class MatrixCapsNet:
                 ]
             with tf.variable_scope('layerC') as scope3:
 
-                c_topology = TopologyBuilder().init()
+                c_topology = TopologyBuilder().init(dtype=self.dtype)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
@@ -319,7 +322,7 @@ class MatrixCapsNet:
                 )
             with tf.variable_scope('layerD') as scope4:
 
-                d_topology = TopologyBuilder().init()
+                d_topology = TopologyBuilder().init(dtype=self.dtype)
                 d_topology.set_is_axial_system(is_axial)
                 d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
                 d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
@@ -346,7 +349,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('aggregation') as scope5:
 
-                aggregating_topology = TopologyBuilder().init()
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -397,7 +400,7 @@ class MatrixCapsNet:
     #             tf.reshape(primary_capsule_layer_B[1], semantically_convolved_pose_shape)
     #         ]
     #
-    #         c_topology = TopologyBuilder().init()
+    #         c_topology = TopologyBuilder().init(dtype=self.dtype)
     #         c_topology.set_is_axial_system(True)
     #         c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
     #         c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
@@ -413,7 +416,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         d_topology = TopologyBuilder().init()
+    #         d_topology = TopologyBuilder().init(dtype=self.dtype)
     #         d_topology.set_is_axial_system(True)
     #         d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
     #         d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
@@ -440,7 +443,7 @@ class MatrixCapsNet:
     #             tf.reshape(conv_caps_layer_D[1], semantically_convolved_pose_shape)
     #         ]
     #
-    #         aggregating_topology = TopologyBuilder().init()
+    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
     #         aggregating_topology.set_is_axial_system(True)
     #         aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
     #         aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -503,7 +506,7 @@ class MatrixCapsNet:
 
             unaggregated_child_count = tf.shape(normal_input_activations)[1]
 
-            aggregation_topology = TopologyBuilder().init()
+            aggregation_topology = TopologyBuilder().init(dtype=self.dtype)
             aggregation_topology.add_initializer(self.weight_init_options)
 
             aggregation_topology.add_spatial_convolution([width, height], 1, 1)
@@ -597,6 +600,7 @@ class MatrixCapsNet:
         # The underlying assumption for why this would work is that the routing
         # algorithm is invariant to scale. This assumption might not actually hold.
         target_stddev = np.sqrt(1.0 / 20.0)
+        # target_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count * 4.0))
 
         # if "deviation" in self.weight_init_options:
         #     target_stddev = self.weight_init_options["deviation"].pop(0)
@@ -684,6 +688,8 @@ class MatrixCapsNet:
 
             tf.summary.histogram('primary caps activations', activation_layer)
             # self.activation_layers.append(activation_layer)
+
+        # we want high precision float32 logic everywhere but in the matmul operation (except when that is the intetion)
         return [tf.cast(activation_layer, dtype=tf.float32), pose_layer]
 
     def build_convolutional_capsule_layer(self,
@@ -996,7 +1002,7 @@ class MatrixCapsNet:
             assert (numpy_shape_ct(likely_parent_pose_variance)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
             # [batch, 1, parent, likely_pose_element_standard_deviation]
-            likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance + sys.float_info.epsilon) + sys.float_info.epsilon
+            likely_parent_pose_deviation = tf.sqrt(likely_parent_pose_variance + sys.float_info.epsilon) + sys.float_info.epsilon  # extra epsilon to deal with
             assert (numpy_shape_ct(likely_parent_pose_deviation)[1:] == np.array([batch_count, 1, parent_count, pose_element_count])[1:]).all()
 
             # inactivity parent per for child capsules
@@ -1151,7 +1157,7 @@ class MatrixCapsNet:
 
         self.activation_layers.append(mapped_parent_as_child_activations)
 
-        return mapped_parent_as_child_activations, tf.cast(mapped_parent_as_child_pose_matrices, dtype=tf.float16)
+        return mapped_parent_as_child_activations, tf.cast(mapped_parent_as_child_pose_matrices, dtype=self.dtype)
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
         with tf.device('/cpu:0'):

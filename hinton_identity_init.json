@@ -17,5 +17,6 @@
   },
 
   "output_path": "output/",
-  "tf_model_dir": "tf_models/"
+  "tf_model_dir": "tf_models/",
+  "dtype": "float32"
 }
