@@ -1138,7 +1138,7 @@ class MatrixCapsNet:
 
             parent_activations, parent_pose_vectors = self.build_parent_assembly_layer(
                 child_activation_vector,
-                tf.cast(potential_parent_pose_vectors, dtype=tf.float32),
+                potential_parent_pose_vectors,
                 final_steepness_lambda,
                 iteration_count,
                 routing_state,
@@ -1157,7 +1157,7 @@ class MatrixCapsNet:
 
         self.activation_layers.append(mapped_parent_as_child_activations)
 
-        return mapped_parent_as_child_activations, tf.cast(mapped_parent_as_child_pose_matrices, dtype=self.dtype)
+        return mapped_parent_as_child_activations, mapped_parent_as_child_pose_matrices
 
     def progress_percentage_node(self, batch_size, full_example_count, is_training):
         with tf.device('/cpu:0'):

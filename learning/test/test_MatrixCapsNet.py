@@ -27,9 +27,9 @@ class TestMatrixCapsNet(tf.test.TestCase):
         routing_state = None
         is_training = tf.constant(True)
 
-        input_layer = tf.placeholder(tf.float16, shape=[None, 32, 32, 1])
+        input_layer = tf.placeholder(tf.float32, shape=[None, 32, 32, 1])
 
-        network_output, next_routing_state, _ = MatrixCapsNet().build_default_architecture(input_layer, iteration_count, routing_state)
+        network_output, next_routing_state, _ = MatrixCapsNet(tf.float32).build_default_architecture(input_layer, iteration_count, routing_state)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -67,7 +67,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         full_example_count = 10
         is_training = tf.placeholder(tf.bool, shape=[])
 
-        p = MatrixCapsNet().progress_percentage_node(batch_size, full_example_count, is_training)
+        p = MatrixCapsNet(tf.float32).progress_percentage_node(batch_size, full_example_count, is_training)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -100,7 +100,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         is_training = tf.placeholder(tf.bool, shape=[])
 
-        i = MatrixCapsNet().increasing_value(.1, .2, is_training)
+        i = MatrixCapsNet(tf.float32).increasing_value(.1, .2, is_training)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -126,7 +126,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         start = .4
         finish = .7
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
         p = mcn.progress_percentage_node(batch_size, full_example_count, is_training)[0]
         cv = mcn.changing_value(start, finish, p)
 
@@ -158,7 +158,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         input_layer = tf.placeholder('float', shape=[None, 32, 32, 1])
 
-        convolution_layer_A = MatrixCapsNet().build_encoding_convolution(input_layer, 5, 32)
+        convolution_layer_A = MatrixCapsNet(tf.float32).build_encoding_convolution(input_layer, 5, 32)
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -172,7 +172,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
     def test_primary_capsule_layer(self):
         input_layer = tf.placeholder('float', shape=[None, 32, 32, 1])
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         convolution_layer_A = mcn.build_encoding_convolution(input_layer, 5, 32)
         primary_capsules_B = mcn.build_primary_matrix_caps(convolution_layer_A)
@@ -195,7 +195,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
     def test_primary_capsule_layer_axial_system(self):
         input_layer = tf.placeholder('float', shape=[None, 32, 32, 1])
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         convolution_layer_A = mcn.build_encoding_convolution(input_layer, 5, 32)
         primary_capsules_B = mcn.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
@@ -218,9 +218,9 @@ class TestMatrixCapsNet(tf.test.TestCase):
 
         random_input_images = np.random.normal(np.zeros([3, 32, 32, 1]))
 
-        input_layer = tf.placeholder(shape=[None, 32, 32, 1], dtype=tf.float16)
+        input_layer = tf.placeholder(shape=[None, 32, 32, 1], dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(dtype=tf.float32)
 
         convolution_layer_A = mcn.build_encoding_convolution(input_layer, 5, 32)
         primary_capsules_B = mcn.build_primary_matrix_caps(convolution_layer_A)
@@ -268,7 +268,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         beta_a = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])))
         steepness_lambda = tf.constant(1.0, dtype=tf.float64)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
 
@@ -314,7 +314,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         beta_a = tf.constant(np.random.normal(np.zeros([1, 1, parent_count, 1])), dtype=tf.float32)
         steepness_lambda = tf.constant(1.0, dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
 
@@ -349,7 +349,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         beta_a = tf.Variable(np.random.normal(np.zeros([1, 1, parent_count, 1])), dtype=tf.float32)
         steepness_lambda = tf.constant(1.0, dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
         active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
 
         parent_activations, likely_parent_pose, likely_parent_pose_deviation, likely_parent_pose_variance = mcn.estimate_parents_layer(
@@ -398,7 +398,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         likely_parent_pose = tf.Variable(np.random.normal(np.zeros([batch_size, 1, parent_count, pose_element_count])), dtype=tf.float32)
         likely_parent_pose_variance = tf.Variable(np.random.random([batch_size, 1, parent_count, pose_element_count]), dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         child_parent_assignment_weights = mcn.estimate_children_layer(parent_activations, likely_parent_pose, likely_parent_pose_variance, potential_pose_vectors, topology)
 
@@ -437,7 +437,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         beta_a = tf.Variable(np.random.normal(np.zeros([1, 1, parent_count, 1])), dtype=tf.float32)
         steepness_lambda = tf.constant(1.0, dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         active_child_parent_assignment_weights = child_parent_assignment_weights * child_activations
 
@@ -496,7 +496,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         child_activations_placeholder = tf.placeholder(tf.float32, shape=[None] + linear_kernel_linear_parent_shape[1:] + [1])
         potential_pose_vectors_placeholder = tf.placeholder(tf.float32, shape=[None] + linear_kernel_linear_parent_shape[1:] + [pose_element_count])
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         capsule_output = mcn.build_parent_assembly_layer(child_activations_placeholder, potential_pose_vectors_placeholder, final_steepness_lambda, iteration_count, routing_state, topology)
 
@@ -540,7 +540,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         child_activations_placeholder = tf.Variable(child_activations_lklp, dtype=tf.float32)
         potential_pose_vectors_placeholder = tf.Variable(potential_pose_vectors_lklp, dtype=tf.float32)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         capsule_output = mcn.build_parent_assembly_layer(child_activations_placeholder, potential_pose_vectors_placeholder, final_steepness_lambda, iteration_count, routing_state, topology)
         activations, pose_vectors = capsule_output
@@ -560,6 +560,7 @@ class TestMatrixCapsNet(tf.test.TestCase):
         self.assertFiniteAndShape(pose_data, [batch_size, 1, topology.linear_parent_shape(), pose_element_count], 'learning parent assembly layer')
 
     def test_build_matrix_caps_learning(self):
+
         iteration_count = 3
         routing_state = None
         final_steepness_lambda = tf.constant(.5)
@@ -579,9 +580,9 @@ class TestMatrixCapsNet(tf.test.TestCase):
         })
         mock_activations   = tf.get_variable(name='mock_activations', initializer=tf.random_uniform([batch_size] + spatial_shape + [input_feature_count, 1], dtype=tf.float32), dtype=tf.float32, trainable=False)
         mock_pose_matrices = tf.get_variable(name='mock_pose_matrices', initializer=tf.truncated_normal([batch_size] + spatial_shape + [input_feature_count, 4, 4], 0, np.sqrt(1.0 / 20.0),
-                                                             dtype=tf.float16), dtype=tf.float16, trainable=False)
+                                                             dtype=tf.float32), dtype=tf.float32, trainable=False)
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         output = mcn.build_matrix_caps(
             [mock_activations, mock_pose_matrices],

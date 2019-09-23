@@ -186,43 +186,44 @@ class TopologyBuilder:
         # scale down and cast to normal range here
         return potential_parent_poses_map
 
-
-    def _compute_potential_parent_poses_map_float16(self, input_layer_poses):
-        s = tf.shape(input_layer_poses)
-        batch_size = s[0]
-        pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
-
-        # in a low precision learning set up here the cale up must take place
-        kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
-        kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
-
-        # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
-        # add zeros in float32 to make use of tensor cores
-        # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
-        potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
-                                     tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
-
-        # scale down and cast to normal range here
-        return potential_parent_poses_map
-
-
-    def _compute_potential_parent_poses_map_int8(self, input_layer_poses):
-        s = tf.shape(input_layer_poses)
-        batch_size = s[0]
-        pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
-
-        # in a low precision learning set up here the cale up must take place
-        kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
-        kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
-
-        # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
-        # add zeros in float32 to make use of tensor cores
-        # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
-        potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
-                                     tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
-
-        # scale down and cast to normal range here
-        return potential_parent_poses_map
+    # FLOAT 16 AND INT8 DO NOT SEEM TO SPEED UP MATMUL OPERATIONS, HENCE I KNOCKED OUT THIS CODE
+    # IT ALSO IS NOT TESTED AT ALL. IT WASN'T EVEN EXECUTED ONCE.
+    # def _compute_potential_parent_poses_map_float16(self, input_layer_poses):
+    #     s = tf.shape(input_layer_poses)
+    #     batch_size = s[0]
+    #     pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
+    #
+    #     # in a low precision learning set up here the cale up must take place
+    #     kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
+    #     kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
+    #
+    #     # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
+    #     # add zeros in float32 to make use of tensor cores
+    #     # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
+    #     potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
+    #                                  tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
+    #
+    #     # scale down and cast to normal range here
+    #     return potential_parent_poses_map
+    #
+    #
+    # def _compute_potential_parent_poses_map_int8(self, input_layer_poses):
+    #     s = tf.shape(input_layer_poses)
+    #     batch_size = s[0]
+    #     pose_width, pose_height = input_layer_poses.get_shape().as_list()[-2:]
+    #
+    #     # in a low precision learning set up here the cale up must take place
+    #     kernel_mapped_input = self.map_input_layer_to_parent_kernels(tf.cast(input_layer_poses, tf.float16))
+    #     kernel_mapped_weights = self.map_weights_to_parent_kernels(batch_size, pose_width, pose_height)  # scaling factor can remain 1 as determinants are pushed towards 1
+    #
+    #     # [*kernel_dimensions, *parent_dimensions, pose_width, pose_height]
+    #     # add zeros in float32 to make use of tensor cores
+    #     # @TODO expand matmul arguments to dimensions that will make use of the tensor cores
+    #     potential_parent_poses_map = tf.matmul(kernel_mapped_input, kernel_mapped_weights) + \
+    #                                  tf.zeros(shape=[1] * (len(input_layer_poses.get_shape().as_list()) ),dtype=tf.float32)
+    #
+    #     # scale down and cast to normal range here
+    #     return potential_parent_poses_map
 
 
     def _linearize_potential_parent_poses_map(self, potential_parent_poses_map):

@@ -86,19 +86,14 @@ class MatrixCapsNetEstimator:
             optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
 
             #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
+            # TODO what if we are in prediction mode?
             train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,
                         tf.train.get_global_step())
 
             tf.summary.histogram('predicted_classes', predicted_classes)
             tf.summary.histogram('labels', predicted_classes)
 
-            # Compute evaluation metrics.
-            accuracy = tf.metrics.accuracy(labels=labels,
-                                           predictions=predicted_classes,
-                                           name='acc_op')
 
-            metrics = {'accuracy': accuracy}
-            # tf.summary.scalar('accuracy', accuracy[1])
 
             if mode == tf.estimator.ModeKeys.PREDICT:
                 predictions = {
@@ -109,6 +104,13 @@ class MatrixCapsNetEstimator:
                 }
                 return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
+            # Compute evaluation metrics.
+            accuracy = tf.metrics.accuracy(labels=labels,
+                                           predictions=predicted_classes,
+                                           name='acc_op')
+
+            metrics = {'accuracy': accuracy}
+            # tf.summary.scalar('accuracy', accuracy[1])
 
 
             if mode == tf.estimator.ModeKeys.EVAL:
@@ -154,8 +156,19 @@ class MatrixCapsNetEstimator:
 
     def make_parallel(self, examples, labels, optimizer, label_count, iteration_count, processed_example_counter, global_step):
 
-        examples_sub_batches = tf.split(examples, config.GPU_COUNT, 0)
-        labels_sub_batches = tf.split(labels, config.GPU_COUNT, 0)
+        # compute batch sizes
+        average_sub_batch_size = tf.shape(examples)[0] / config.GPU_COUNT
+        minimal_sub_batch_size = tf.floor(average_sub_batch_size)
+        larger_batches_count = tf.round(config.GPU_COUNT * (average_sub_batch_size - minimal_sub_batch_size))
+        sub_batch_size_list = tf.cast(
+            tf.ones([config.GPU_COUNT]) * tf.cast(minimal_sub_batch_size, tf.float32) + tf.concat(
+                [tf.ones([larger_batches_count]), tf.zeros([config.GPU_COUNT - larger_batches_count])], axis=0),
+            tf.int32)
+
+        # split data sets
+        examples_sub_batches = tf.split(examples, sub_batch_size_list, 0)
+        #TODO what if we are in prediction mode?
+        labels_sub_batches = tf.split(labels, sub_batch_size_list, 0) if labels is not None else None
 
         tower_grads = []
         loss_sub_batches = []
@@ -171,7 +184,7 @@ class MatrixCapsNetEstimator:
                         # constructs the entire CIFAR model but shares the variables across
                         # all towers.
                         loss_sub_batch, predicted_classes_sub_batch, activations_sub_batch, poses_sub_batch = \
-                            self.network_output(examples_sub_batches[i], labels_sub_batches[i], label_count, iteration_count, processed_example_counter)
+                            self.network_output(examples_sub_batches[i], labels_sub_batches[i] if labels_sub_batches else None, label_count, iteration_count, processed_example_counter)
 
                         # Reuse variables for the next tower.
                         tf.get_variable_scope().reuse_variables()
@@ -179,28 +192,42 @@ class MatrixCapsNetEstimator:
                         # Retain the summaries from the final tower.
                         # summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
-                        # Calculate the gradients for the batch of data on this CIFAR tower.
-                        grads = optimizer.compute_gradients(loss_sub_batch)
-
-                        # Keep track of the gradients across all towers.
-                        tower_grads.append(grads)
-
-                        loss_sub_batches.append(loss_sub_batch)
                         predicted_classes_sub_batches.append(predicted_classes_sub_batch)
                         activations_sub_batches.append(activations_sub_batch)
                         poses_sub_batches.append(poses_sub_batch)
 
+                        # Calculate the gradients for the batch of data on this CIFAR tower.
+                        # TODO v what if we are in prediction mode?
+                        if loss_sub_batch is None:
+                            continue
+
+                        g = optimizer.compute_gradients(loss_sub_batch)
+
+                        # Keep track of the gradients across all towers.
+                        tower_grads.append(g)
+                        loss_sub_batches.append(loss_sub_batch)
+                        # TODO ^ what if we are in prediction mode?
+
+
+        predicted_classes = tf.concat(predicted_classes_sub_batches, 0)
+        activations = tf.concat(activations_sub_batches, 0)
+        poses = tf.concat(poses_sub_batches, 0)
+
         # We must calculate the mean of each gradient. Note that this is the
         # synchronization point across all towers.
+
+        if labels is None:
+            return None, None, predicted_classes, activations, poses
+
+        #TODO v what if we are in prediction mode?
         grads = self.average_gradients(tower_grads)
 
         # Apply the gradients to adjust the shared variables.
         train_op = optimizer.apply_gradients(grads, global_step=global_step)
 
         loss = tf.reduce_mean(tf.stack(loss_sub_batches, 0))
-        predicted_classes = tf.concat(predicted_classes_sub_batches, 0)
-        activations = tf.concat(activations_sub_batches, 0)
-        poses = tf.concat(poses_sub_batches, 0)
+        #TODO ^ what if we are in prediction mode?
+
 
         return train_op, loss, predicted_classes, activations, poses
 
@@ -208,7 +235,7 @@ class MatrixCapsNetEstimator:
 
         routing_state = None
 
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
 
         if self.inialization:
             mcn.set_init_options(self.inialization)
@@ -228,10 +255,12 @@ class MatrixCapsNetEstimator:
 
         tf.summary.scalar('spread_loss_margin', spread_loss_margin)
 
+        #TODO what if we are in prediction mode?
         loss = self.loss_fn(tf.one_hot(labels, label_count), tf.reshape(activations, [-1, label_count]), {
-            "margin": spread_loss_margin})
+            "margin": spread_loss_margin}) if labels is not None else None
 
-        if regularization_loss is not None: loss = loss + regularization_loss * self.regularization['axial']
+        if (loss is not None) and (regularization_loss is not None):
+            loss = loss + regularization_loss * self.regularization['axial']
 
         return loss, predicted_classes, activations, poses
 
@@ -272,6 +301,7 @@ class MatrixCapsNetEstimator:
             average_grads.append(grad_and_var)
         return average_grads
 
+    #@TODO remove unused parameters and test if it is working correctly
     def train_and_test(self, small_norb, batch_size=64, epoch_count=600, max_steps=None, save_summary_steps=500, eval_steps=100, model_path=config.TF_MODEL_PATH, must_stratify_batches=True):
 
         if max_steps is None:
@@ -288,6 +318,7 @@ class MatrixCapsNetEstimator:
 
         validation_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_validation_set()).batch(batch_size)
         test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
+        test_fn_2 = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()[0]).batch(batch_size)
 
         train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
         eval_spec = tf.estimator.EvalSpec(
@@ -304,7 +335,7 @@ class MatrixCapsNetEstimator:
         test_result = estimator.evaluate(input_fn=test_fn)
         print("test results computed")
 
-        test_predictions = list(estimator.predict(input_fn=test_fn))
+        test_predictions = list(estimator.predict(input_fn=test_fn_2))
         print("test predictions computed")
 
         return test_result, validation_result, test_predictions

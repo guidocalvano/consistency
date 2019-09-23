@@ -5,9 +5,6 @@ import pickle
 import os.path
 from input.MatFileReaderWriter import MatFileReaderWriter
 import datetime
-from matplotlib import pyplot as plt
-from matplotlib.animation import FuncAnimation
-import cv2
 import config
 
 
@@ -379,8 +376,8 @@ class SmallNorb:
     def stratified_training_set_as_tf_data_set(self, epoch_count, batch_size):
 
         return tf.data.Dataset.from_generator(
-            lambda: self.stratifified_example_generator(self.training["examples"].astype(np.float16), self.training["labels"]),
-                                                        (tf.float16, tf.int32),
+            lambda: self.stratifified_example_generator(self.training["examples"].astype(np.float32), self.training["labels"]),
+                                                        (tf.float32, tf.int32),
                                                         (tf.TensorShape(self.training["examples"].shape[1:]), tf.TensorShape([]))) \
                 .repeat(epoch_count)\
                 .batch(batch_size)\
