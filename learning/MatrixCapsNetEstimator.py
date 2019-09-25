@@ -71,7 +71,7 @@ class MatrixCapsNetEstimator:
 
     def model_function(self, examples, labels, mode, params):
 
-        with tf.device('/cpu:0'):
+        with tf.device('/CPU:0'):
 
             total_example_count = params["total_example_count"]
             iteration_count = params["iteration_count"]
@@ -166,9 +166,10 @@ class MatrixCapsNetEstimator:
             tf.int32)
 
         # split data sets
-        examples_sub_batches = tf.split(examples, sub_batch_size_list, 0)
+        print('SUBBATCH SIZE LIST')
+        examples_sub_batches = tf.split(examples, sub_batch_size_list  if config.GPU_COUNT > 1 else 1, 0)
         #TODO what if we are in prediction mode?
-        labels_sub_batches = tf.split(labels, sub_batch_size_list, 0) if labels is not None else None
+        labels_sub_batches = tf.split(labels, sub_batch_size_list  if config.GPU_COUNT > 1 else 1, 0) if labels is not None else None
 
         tower_grads = []
         loss_sub_batches = []
@@ -178,7 +179,7 @@ class MatrixCapsNetEstimator:
 
         with tf.variable_scope(tf.get_variable_scope()):
             for i in range(config.GPU_COUNT):
-                with tf.device('/gpu:%d' % i):
+                with tf.device('/device:GPU:%d' % i):
                     with tf.name_scope('%s_%d' % ('tower', i)) as scope:
                         # Calculate the loss for one tower of the CIFAR model. This function
                         # constructs the entire CIFAR model but shares the variables across
@@ -349,6 +350,10 @@ class MatrixCapsNetEstimator:
             save_summary_steps=self.save_summary_steps,  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
             session_config=tf.ConfigProto(
                 allow_soft_placement=True,
+                gpu_options=tf.GPUOptions(
+                    per_process_gpu_memory_fraction=0.7,
+                    allow_growth=True
+                ),
                 log_device_placement=True
             )
         )
