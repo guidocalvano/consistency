@@ -422,8 +422,6 @@ class SmallNorb:
             print('restratified')
 
             for index in next_stratification:
-                print('yielding index: ' + str(index))
-
                 yield index
 
     def stratifified_example_generator(self, images, labels):

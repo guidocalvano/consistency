@@ -32,7 +32,7 @@ class MatrixCapsNet:
 
     '''
 
-    def __init__(self, dtype):
+    def __init__(self, dtype, encoding_convolution_weight_stddev=None, primary_pose_weights_stddev=None, primary_activation_weight_stddev=None):
         self.weight_init_options = {
             "type": "xavier",
             "matrix": True
@@ -46,6 +46,9 @@ class MatrixCapsNet:
 
         self.dtype = dtype
 
+        self.primary_pose_weights_stddev = primary_pose_weights_stddev if primary_pose_weights_stddev is not None else np.sqrt(1.0 / 20.0)
+        self.primary_activation_weight_stddev = primary_activation_weight_stddev
+        self.encoding_convolution_weight_stddev = encoding_convolution_weight_stddev
 
     def set_init_options(self, init_options):
         self.weight_init_options = init_options
@@ -539,11 +542,12 @@ class MatrixCapsNet:
     def build_encoding_convolution(self, input_layer, kernel_size, filter_count, output_count=0.0):
         #@TODO: Make the standard deviation take into account the number of outputs per node
         input_count = kernel_size * kernel_size  # do not multiply input by .5 because input is not produced by a relu
-        xavier_stddev = np.sqrt(1.0 / (input_count + output_count * .5))  # do multiply output by .5 because the relu halves output
+        #xavier init if no constant specified
+        stddev = self.encoding_convolution_weight_stddev if self.encoding_convolution_weight_stddev is not None else np.sqrt(1.0 / (input_count + output_count * .5))  # do multiply output by .5 because the relu halves output
         output_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=kernel_size,
-            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=xavier_stddev),
+            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=stddev),
             filters=filter_count,
             strides=[2, 2],
             activation=tf.nn.relu,  #@TODO: test leaky relu
@@ -599,7 +603,7 @@ class MatrixCapsNet:
         # described with many bits using float values.
         # The underlying assumption for why this would work is that the routing
         # algorithm is invariant to scale. This assumption might not actually hold.
-        target_stddev = np.sqrt(1.0 / 20.0)
+        target_stddev = self.primary_pose_weights_stddev
         # target_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count * 4.0))
 
         # if "deviation" in self.weight_init_options:
@@ -653,12 +657,12 @@ class MatrixCapsNet:
 
     def build_cast_conv_to_activation_layer(self, input_layer, input_filter_count, output_count=0.0):
 
-        xavier_stddev = np.sqrt(1.0 / (input_filter_count * .5 + output_count))
+        stddev = self.primary_activation_weight_stddev if self.primary_activation_weight_stddev is not None else np.sqrt(1.0 / (input_filter_count * .5 + output_count))
 
         raw_activation_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
-            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=xavier_stddev),
+            kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=stddev),
             filters=input_filter_count,
             activation=tf.nn.sigmoid,
             name='extract_activations'

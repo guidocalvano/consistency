@@ -43,7 +43,11 @@ class MatrixCapsNetEstimator:
              regularization=None,
              save_summary_steps=500,
              eval_steps=100,
-             dtype=tf.float32
+             dtype=tf.float32,
+             spread_loss_decay_factor=.5,
+             encoding_convolution_weight_stddev=None,
+             primary_pose_weights_stddev=None,
+             primary_activation_weight_stddev=None
         ):
         self.loss_fn = loss_fn
         self.architecture = architecture
@@ -53,21 +57,27 @@ class MatrixCapsNetEstimator:
         self.save_summary_steps = save_summary_steps
         self.eval_steps = eval_steps
         self.dtype=dtype
+        self.spread_loss_decay_factor = spread_loss_decay_factor
+
+        self.primary_pose_weights_stddev = primary_pose_weights_stddev
+        self.primary_activation_weight_stddev = primary_activation_weight_stddev
+        self.encoding_convolution_weight_stddev = encoding_convolution_weight_stddev
 
         return self
 
     @staticmethod
     def counter(next_number, is_training):
 
-        number_counter = tf.get_variable('counter', initializer=tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
-        return tf.cond(is_training,
+        with tf.device('/CPU:0'):
+            number_counter = tf.get_variable('counter', initializer=tf.constant(float(0.0)), trainable=False, dtype=tf.float32)
+            return tf.cond(is_training,
                 lambda: number_counter.assign_add(next_number),
                 lambda: number_counter)
 
 
     @staticmethod
-    def spread_loss_margin(processed_example_counter):
-        return 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, (processed_example_counter / 64.0) / 50000.0 - 4.0))
+    def spread_loss_margin(processed_example_counter, spread_loss_decay_factor):
+        return 0.2 + .79 * tf.sigmoid(tf.minimum(10.0, (processed_example_counter * spread_loss_decay_factor) / 50000.0 - 4.0))
 
     def model_function(self, examples, labels, mode, params):
 
@@ -82,16 +92,20 @@ class MatrixCapsNetEstimator:
 
             processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
 
-            # To make float16 training possible epsilon had to be increased
-            optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
+            # # To make float16 training possible epsilon had to be increased
+            # optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
+            optimizer = tf.train.AdamOptimizer()
+
 
             #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
             # TODO what if we are in prediction mode?
             train_op, loss, predicted_classes, activations, poses = self.make_parallel(examples, labels, optimizer, label_count, iteration_count, processed_example_counter,
                         tf.train.get_global_step())
 
+            # without parallization
+            # loss, predicted_classes, activations, poses = self.network_output(examples, labels, label_count, iteration_count, processed_example_counter)
+
             tf.summary.histogram('predicted_classes', predicted_classes)
-            tf.summary.histogram('labels', predicted_classes)
 
 
 
@@ -103,6 +117,8 @@ class MatrixCapsNetEstimator:
                     'poses': poses
                 }
                 return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+
+            tf.summary.histogram('labels', labels)
 
             # Compute evaluation metrics.
             accuracy = tf.metrics.accuracy(labels=labels,
@@ -180,6 +196,8 @@ class MatrixCapsNetEstimator:
         with tf.variable_scope(tf.get_variable_scope()):
             for i in range(config.GPU_COUNT):
                 with tf.device('/device:GPU:%d' % i):
+                    print('TARGET DEVICE:')
+                    print('/device:GPU:%d' % i)
                     with tf.name_scope('%s_%d' % ('tower', i)) as scope:
                         # Calculate the loss for one tower of the CIFAR model. This function
                         # constructs the entire CIFAR model but shares the variables across
@@ -252,7 +270,7 @@ class MatrixCapsNetEstimator:
 
         predicted_classes = tf.reshape(tf.argmax(activations, 1), [-1])
 
-        spread_loss_margin = MatrixCapsNetEstimator.spread_loss_margin(processed_example_counter)
+        spread_loss_margin = MatrixCapsNetEstimator.spread_loss_margin(processed_example_counter, self.spread_loss_decay_factor)
 
         tf.summary.scalar('spread_loss_margin', spread_loss_margin)
 
@@ -344,14 +362,18 @@ class MatrixCapsNetEstimator:
     def create_estimator(self, small_norb, model_path, epoch_count=1.0, save_summary_steps=500):
         total_example_count = small_norb.training_example_count() * epoch_count
 
+        # strategy = tf.distribute.MirroredStrategy()
+
         run_config = tf.estimator.RunConfig(
             # msave_checkpoints_secs=60 * 60,  # Save checkpoints every hour minutes.
             keep_checkpoint_max=10,  # Retain the 10 most recent checkpoints.
             save_summary_steps=self.save_summary_steps,  # default is 100, but we even compute gradients for the summary, so maybe not wise to do this step too often
+            # train_distribute=strategy,
+            # eval_distribute=strategy,
             session_config=tf.ConfigProto(
                 allow_soft_placement=True,
                 gpu_options=tf.GPUOptions(
-                    per_process_gpu_memory_fraction=0.7,
+                    per_process_gpu_memory_fraction=0.8,
                     allow_growth=True
                 ),
                 log_device_placement=True

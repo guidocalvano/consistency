@@ -5,14 +5,14 @@
 
   "reduce_to_two_examples": false,
 
-  "architecture": "build_default_architecture",
+  "architecture": "build_semantic_convolution_architecture",
   "initialization": {
     "type": "identity",
     "uniform": 0.03
   },
 
   "regularization": {
-    "axial": 0.0 
+    "axial": 0.0
   },
 
   "output_path": "output/",

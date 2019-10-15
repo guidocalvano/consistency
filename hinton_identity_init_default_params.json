@@ -18,5 +18,8 @@
   "output_path": "output/",
   "tf_model_dir": "tf_models/",
   "dtype": "float32",
-  "spread_loss_decay_factor": 0.5
+  "spread_loss_decay_factor": 0.5,
+  "encoding_convolution_weight_stddev": 5e-02,
+  "primary_pose_weights_stddev": 0.5,
+  "primary_activation_weight_stddev": 3.0
 }

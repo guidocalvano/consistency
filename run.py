@@ -20,7 +20,7 @@ def run(result_name, config, sn):
     epoch_count = int(total_processed_examples / sn.training_example_count())  # = 600
     max_steps = int(total_processed_examples / batch_size)  # = 1143529
 
-    save_summary_steps = max_steps / config["save_summary_count"]
+    save_summary_steps = 500
 
     mcne = MatrixCapsNetEstimator().init(
         architecture=config["architecture"],
@@ -28,12 +28,25 @@ def run(result_name, config, sn):
         regularization=config["regularization"],
         save_summary_steps=save_summary_steps,
         eval_steps=config["eval_steps"],
-        dtype={"float32": tf.float32, "float16": tf.float16}[config["dtype"]]
+        dtype={"float32": tf.float32, "float16": tf.float16}[config["dtype"]],
+        spread_loss_decay_factor=config["spread_loss_decay_factor"],
+        encoding_convolution_weight_stddev=config["encoding_convolution_weight_stddev"] if "encoding_convolution_weight_stddev" in config else None,
+        primary_pose_weights_stddev=config["primary_pose_weights_stddev"] if "primary_pose_weights_stddev" in config else None,
+        primary_activation_weight_stddev=config["primary_activation_weight_stddev"] if "primary_activation_weight_stddev" in config else None
     )
+
+    print('max_steps')
+    print(max_steps)
+
+    print('epoch_count')
+    print(epoch_count)
+
+    print('batch_size')
+    print(batch_size)
 
     results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config["tf_model_dir"], result_name))
 
-    result_file_path = os.path.join(config["output"], result_name + '.dill')
+    result_file_path = os.path.join(config["output_path"], result_name + '.dill')
 
     if not os.path.exists(os.path.dirname(result_file_path)):
         os.makedirs(os.path.dirname(result_file_path))
