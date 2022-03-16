@@ -32,7 +32,15 @@ class MatrixCapsNet:
 
     '''
 
-    def __init__(self, dtype, encoding_convolution_weight_stddev=None, primary_pose_weights_stddev=None, primary_activation_weight_stddev=None):
+    def __init__(self,
+                 dtype,
+                 encoding_convolution_weight_stddev=None,
+                 primary_pose_weights_stddev=None,
+                 primary_activation_weight_stddev=None,
+                 texture_weight_decay=0.0,
+                 capsule_weight_decay=0.0,
+                 detach_primary_poses=False,
+                 identity_primary_poses=False):
         self.weight_init_options = {
             "type": "xavier",
             "matrix": True
@@ -49,6 +57,12 @@ class MatrixCapsNet:
         self.primary_pose_weights_stddev = primary_pose_weights_stddev if primary_pose_weights_stddev is not None else np.sqrt(1.0 / 20.0)
         self.primary_activation_weight_stddev = primary_activation_weight_stddev
         self.encoding_convolution_weight_stddev = encoding_convolution_weight_stddev
+
+        self.texture_weight_decay = texture_weight_decay
+        self.capsule_weight_decay = capsule_weight_decay
+
+        self.detach_primary_poses = detach_primary_poses
+        self.identity_primary_poses = identity_primary_poses
 
     def set_init_options(self, init_options):
         self.weight_init_options = init_options
@@ -83,10 +97,11 @@ class MatrixCapsNet:
                     convolution_layer_A,
                     is_axial_system=is_axial,
                     output_count=(1.5 * 1.5 * capsule_count_C)  # average kernel size C squared * capsule_count_C
+
                 )
 
             with tf.variable_scope('layerC') as scope3:
-                c_topology = TopologyBuilder().init(dtype=self.dtype)
+                c_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -101,7 +116,7 @@ class MatrixCapsNet:
                 )
 
             with tf.variable_scope('layerD') as scope3:
-                d_topology = TopologyBuilder().init(dtype=self.dtype)
+                d_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 d_topology.set_is_axial_system(is_axial)
                 d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
                 d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -117,7 +132,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerAggregation') as scope3:
 
-                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -138,10 +153,33 @@ class MatrixCapsNet:
 
                 next_routing_state = tf.get_collection("next_routing_state", scope0)
 
-            axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
-                tf.get_collection("orthogonal_regularization"), scope0) * self.regularization["axial"] if is_axial else None
+            axial_system_loss = (tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
+                tf.get_collection("orthogonal_regularization"), scope0)) * self.regularization["axial"] if is_axial else None
 
-        return [final_activations, final_poses], next_routing_state, axial_system_loss
+            #@TODO: Check if this is correct and if so apply it to the other architecture funtions
+            reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope0)
+
+            regularization_losses = []
+            if reg_losses is not None:
+                print("REG_LOSSES")
+                print(reg_losses)
+                regularization_losses = regularization_losses + reg_losses
+                tf.summary.scalar('weight decay losses', sum(regularization_losses))
+
+            if axial_system_loss is not None:
+                tf.summary.scalar('axial_system_loss', sum(axial_system_loss))
+
+                regularization_losses = regularization_losses + axial_system_loss
+
+
+            total_regularization_loss = tf.constant(0, dtype=tf.float32)
+
+            if(len(regularization_losses) > 0):
+                total_regularization_loss = sum(regularization_losses)
+
+            tf.summary.scalar('total_regularization_loss', total_regularization_loss)
+
+        return [final_activations, final_poses], next_routing_state, total_regularization_loss
 
     def build_simple_architecture(self, input_layer, iteration_count, routing_state):
 
@@ -166,7 +204,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerC') as scope1:
 
-                c_topology = TopologyBuilder().init(dtype=self.dtype)
+                c_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -182,7 +220,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('layerAggregation') as scope1:
 
-                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(conv_caps_layer_C[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -201,10 +239,27 @@ class MatrixCapsNet:
 
             next_routing_state = tf.get_collection("next_routing_state", scope0)
 
+
+            reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope0)
+
             axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
                 tf.get_collection("orthogonal_regularization", scope0)) * self.regularization["axial"] if is_axial else None
 
-            return [final_activations, final_poses], next_routing_state, axial_system_loss
+            regularization_losses = []
+            if reg_losses is not None:
+                print("REG_LOSSES")
+                print(reg_losses)
+                regularization_losses = regularization_losses + reg_losses
+
+            if axial_system_loss is not None:
+                regularization_losses = regularization_losses + axial_system_loss
+
+            total_regularization_loss = tf.constant(0, dtype=tf.float32)
+
+            if (len(regularization_losses) > 0):
+                total_regularization_loss = sum(regularization_losses)
+
+        return [final_activations, final_poses], next_routing_state, total_regularization_loss
 
     # def build_axial_system_architecture(self, input_layer, iteration_count, routing_state):
     #
@@ -222,7 +277,7 @@ class MatrixCapsNet:
     #         # number of capsules is defined by number of texture patches
     #         primary_capsule_layer_B = self.build_primary_matrix_caps(convolution_layer_A, is_axial_system=True)
     #
-    #         c_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         c_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         c_topology.set_is_axial_system(True)
     #         c_topology.add_spatial_convolution(primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
     #         c_topology.add_dense_connection(primary_capsule_layer_B[0].get_shape().as_list()[3], capsule_count_C)
@@ -238,7 +293,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         d_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         d_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         d_topology.set_is_axial_system(True)
     #         d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
     #         d_topology.add_dense_connection(conv_caps_layer_C[0].get_shape().as_list()[3], capsule_count_D)
@@ -254,7 +309,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         aggregating_topology.set_is_axial_system(True)
     #         aggregating_topology.add_aggregation(conv_caps_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
     #         aggregating_topology.add_dense_connection(conv_caps_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -310,7 +365,7 @@ class MatrixCapsNet:
                 ]
             with tf.variable_scope('layerC') as scope3:
 
-                c_topology = TopologyBuilder().init(dtype=self.dtype)
+                c_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 c_topology.set_is_axial_system(is_axial)
                 c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
                 c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
@@ -325,7 +380,7 @@ class MatrixCapsNet:
                 )
             with tf.variable_scope('layerD') as scope4:
 
-                d_topology = TopologyBuilder().init(dtype=self.dtype)
+                d_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 d_topology.set_is_axial_system(is_axial)
                 d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
                 d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
@@ -352,7 +407,7 @@ class MatrixCapsNet:
 
             with tf.variable_scope('aggregation') as scope5:
 
-                aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
+                aggregating_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
                 aggregating_topology.set_is_axial_system(is_axial)
                 aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
                 aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -372,11 +427,29 @@ class MatrixCapsNet:
 
             next_routing_state = tf.get_collection("next_routing_state", scope0)
 
-        axial_system_loss = tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
-            tf.get_collection("orthogonal_regularization", scope0)) * self.regularization["axial"] if is_axial else None
+        axial_system_loss = (tf.reduce_sum(tf.get_collection("unit_scale_regularization", scope0)) + tf.reduce_sum(
+            tf.get_collection("orthogonal_regularization"), scope0)) * self.regularization["axial"] if is_axial else None
 
-        return [final_activations, final_poses], next_routing_state, axial_system_loss
+        #@TODO: Check if this is correct and if so apply it to the other architecture funtions
+        reg_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope0)
 
+        regularization_losses = []
+        if reg_losses is not None:
+            print("REG_LOSSES")
+            print(reg_losses)
+            regularization_losses = regularization_losses + reg_losses
+
+
+        if axial_system_loss is not None:
+            regularization_losses = regularization_losses + axial_system_loss
+
+
+        total_regularization_loss = tf.constant(0, dtype=tf.float32)
+
+        if(len(regularization_losses) > 0):
+            total_regularization_loss = sum(regularization_losses)
+
+        return [final_activations, final_poses], next_routing_state, total_regularization_loss
     # def build_semantic_convolution_axial_system_architecture(self, input_layer, iteration_count, routing_state):
     #
     #     with tf.name_scope('semantic_convolved_axial_system_matrix_capsule_architecture') as scope0:
@@ -403,7 +476,7 @@ class MatrixCapsNet:
     #             tf.reshape(primary_capsule_layer_B[1], semantically_convolved_pose_shape)
     #         ]
     #
-    #         c_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         c_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         c_topology.set_is_axial_system(True)
     #         c_topology.add_spatial_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[1:3], 3, 2)
     #         c_topology.add_semantic_convolution(semantically_convolved_primary_capsule_layer_B[0].get_shape().as_list()[3:5], 3, 1)
@@ -419,7 +492,7 @@ class MatrixCapsNet:
     #             routing_state
     #         )
     #
-    #         d_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         d_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         d_topology.set_is_axial_system(True)
     #         d_topology.add_spatial_convolution(conv_caps_layer_C[0].get_shape().as_list()[1:3], 3, 1)
     #         d_topology.add_semantic_convolution(conv_caps_layer_C[0].get_shape().as_list()[3:5], 3, 1)
@@ -446,7 +519,7 @@ class MatrixCapsNet:
     #             tf.reshape(conv_caps_layer_D[1], semantically_convolved_pose_shape)
     #         ]
     #
-    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype)
+    #         aggregating_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
     #         aggregating_topology.set_is_axial_system(True)
     #         aggregating_topology.add_aggregation(semantically_collapsed_layer_D[0].get_shape().as_list()[1], [[3, 0], [3, 1]])
     #         aggregating_topology.add_dense_connection(semantically_collapsed_layer_D[0].get_shape().as_list()[3], capsule_count_E)
@@ -509,7 +582,7 @@ class MatrixCapsNet:
 
             unaggregated_child_count = tf.shape(normal_input_activations)[1]
 
-            aggregation_topology = TopologyBuilder().init(dtype=self.dtype)
+            aggregation_topology = TopologyBuilder().init(dtype=self.dtype, weight_decay=self.capsule_weight_decay)
             aggregation_topology.add_initializer(self.weight_init_options)
 
             aggregation_topology.add_spatial_convolution([width, height], 1, 1)
@@ -544,6 +617,9 @@ class MatrixCapsNet:
         input_count = kernel_size * kernel_size  # do not multiply input by .5 because input is not produced by a relu
         #xavier init if no constant specified
         stddev = self.encoding_convolution_weight_stddev if self.encoding_convolution_weight_stddev is not None else np.sqrt(1.0 / (input_count + output_count * .5))  # do multiply output by .5 because the relu halves output
+
+        # regularizer = tf.contrib.layers.l2_regularizer(scale=self.texture_weight_decay)
+
         output_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=kernel_size,
@@ -551,6 +627,8 @@ class MatrixCapsNet:
             filters=filter_count,
             strides=[2, 2],
             activation=tf.nn.relu,  #@TODO: test leaky relu
+            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=self.texture_weight_decay),
+            bias_regularizer=tf.contrib.layers.l2_regularizer(scale=self.texture_weight_decay),
             name='convolutional_layer'
         )
         return output_layer
@@ -608,12 +686,15 @@ class MatrixCapsNet:
 
         # if "deviation" in self.weight_init_options:
         #     target_stddev = self.weight_init_options["deviation"].pop(0)
+        #regularizer = tf.contrib.layers.l2_regularizer(scale=self.capsule_weight_decay)
 
         pose_element_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
             kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=target_stddev),
             filters=input_filter_count * elements_per_pose,
+            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=self.capsule_weight_decay),
+            bias_regularizer=tf.contrib.layers.l2_regularizer(scale=self.capsule_weight_decay),
             activation=None,
             name='extract_poses'
         )
@@ -659,12 +740,16 @@ class MatrixCapsNet:
 
         stddev = self.primary_activation_weight_stddev if self.primary_activation_weight_stddev is not None else np.sqrt(1.0 / (input_filter_count * .5 + output_count))
 
+        # regularizer = tf.contrib.layers.l2_regularizer(scale=self.capsule_weight_decay)
+
         raw_activation_layer = tf.layers.conv2d(
             input_layer,
             kernel_size=[1, 1],
             kernel_initializer=tf.initializers.truncated_normal(mean=0.0, stddev=stddev),
             filters=input_filter_count,
             activation=tf.nn.sigmoid,
+            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=self.texture_weight_decay),
+            bias_regularizer=tf.contrib.layers.l2_regularizer(scale=self.texture_weight_decay),
             name='extract_activations'
         )
 
@@ -686,7 +771,30 @@ class MatrixCapsNet:
             input_filter_count = int(input_layer.get_shape().as_list()[filter_axis])
 
             activation_layer = self.build_cast_conv_to_activation_layer(input_layer, input_filter_count, output_count=output_count)
-            pose_layer = self.build_cast_conv_to_pose_layer(input_layer, input_filter_count, is_axial_system, output_count=output_count)
+            pose_input_layer = input_layer
+            if self.detach_primary_poses:
+                pose_input_layer = tf.ones(tf.shape(input_layer), dtype=tf.float32)
+
+            if not self.identity_primary_poses:
+                pose_layer = self.build_cast_conv_to_pose_layer(pose_input_layer, input_filter_count, is_axial_system, output_count=output_count)
+            else:
+                # np.pad(np.arange(4)[:, np.newaxis], ((0, 0), (0, 1)))[:, np.newaxis, :] + np.pad(
+                #     np.arange(4)[:, np.newaxis], ((0, 0), (1, 0)))[np.newaxis, :, :]
+
+                untranslated_poses = tf.eye(4, 4, tf.shape(input_layer))
+
+                # add location coordinates
+                row_count = tf.shape(input_layer)[1]
+                col_count = tf.shape(input_layer)[2]
+
+                row_coordinates = tf.pad(tf.cast(tf.range(row_count), tf.float32)[:, tf.newaxis] / tf.cast(row_count, tf.float32), ((0,0), (0,3)))
+                col_coordinates = tf.pad(tf.cast(tf.range(col_count), tf.float32)[:, tf.newaxis] / tf.cast(col_count, tf.float32), ((0,0), (1,2)))
+
+                coordinate_grid = row_coordinates[:, tf.newaxis, :] + col_coordinates[tf.newaxis, :, :]
+
+                origin_translation = tf.pad(coordinate_grid[:, :, tf.newaxis, :], ((0,0), (0,0), (3,0), (0,0)))
+
+                pose_layer = (untranslated_poses + origin_translation[tf.newaxis, :, :, tf.newaxis, :, :]) * 1000.0
 
             tf.summary.histogram('primary_poses_determinant', tf.linalg.det(tf.cast(pose_layer, tf.float32)))
 
@@ -893,7 +1001,7 @@ class MatrixCapsNet:
             [_, child_count, parent_count, pose_element_count] = numpy_shape_ct(children_per_potential_parent_pose_vectors)
             batch_size = tf.shape(children_per_potential_parent_pose_vectors)[0]
 
-            with tf.device('/cpu:0'):
+            with tf.device('/CPU:0'):
                 beta_u = tf.get_variable('beta_u', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
                 beta_a = tf.get_variable('beta_a', initializer=tf.truncated_normal([1, 1, parent_count, 1]))
 

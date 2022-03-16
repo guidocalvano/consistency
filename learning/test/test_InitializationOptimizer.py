@@ -26,7 +26,7 @@ class test_InitializationOptimizer(unittest.TestCase):
 
         tf.reset_default_graph()
         examples = sn.default_training_set()[0]
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
         mcn.set_init_options({
             "type": "",
             "deviation": constant_list

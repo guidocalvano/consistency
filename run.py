@@ -22,6 +22,12 @@ def run(result_name, config, sn):
 
     save_summary_steps = 500
 
+    print("TEXTURE WEIGHT DECAY")
+    print(config["texture_weight_decay"])
+
+    print("CAPSULE WEIGHT DECAY")
+    print(config["capsule_weight_decay"])
+
     mcne = MatrixCapsNetEstimator().init(
         architecture=config["architecture"],
         initialization=config["initialization"],
@@ -32,7 +38,16 @@ def run(result_name, config, sn):
         spread_loss_decay_factor=config["spread_loss_decay_factor"],
         encoding_convolution_weight_stddev=config["encoding_convolution_weight_stddev"] if "encoding_convolution_weight_stddev" in config else None,
         primary_pose_weights_stddev=config["primary_pose_weights_stddev"] if "primary_pose_weights_stddev" in config else None,
-        primary_activation_weight_stddev=config["primary_activation_weight_stddev"] if "primary_activation_weight_stddev" in config else None
+        primary_activation_weight_stddev=config["primary_activation_weight_stddev"] if "primary_activation_weight_stddev" in config else None,
+        initial_learning_rate=config["initial_learning_rate"] if "initial_learning_rate" in config else 0.001,
+        learning_rate_decay_rate=config["learning_rate_decay_rate"] if "learning_rate_decay_rate" in config else 1.0,
+        learning_rate_decay_steps=config["learning_rate_decay_steps"] if "learning_rate_decay_steps" in config else 1,
+        learning_rate_use_staircase=config["learning_rate_use_staircase"] if "learning_rate_use_staircase" in config else False,
+        clip_learning_rate=config["clip_learning_rate"] if "clip_learning_rate" in config else 0.0,
+        texture_weight_decay=config["texture_weight_decay"] if "texture_weight_decay" in config else 0.0,
+        capsule_weight_decay=config["capsule_weight_decay"] if "capsule_weight_decay" in config else 0.0,
+        detach_primary_poses=config["detach_primary_poses"] if "detach_primary_poses" in config else False,
+        identity_primary_poses=config["identity_primary_poses"] if "identity_primary_poses" in config else False
     )
 
     print('max_steps')
@@ -44,7 +59,11 @@ def run(result_name, config, sn):
     print('batch_size')
     print(batch_size)
 
-    results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config["tf_model_dir"], result_name))
+    if "no_validation" in config and config["no_validation"]:
+        results = mcne.train_and_test_without_validation_split(sn, batch_size, epoch_count, max_steps,
+                                      model_path=os.path.join(config["tf_model_dir"], result_name))
+    else:
+        results = mcne.train_and_test(sn, batch_size, epoch_count, max_steps, model_path=os.path.join(config["tf_model_dir"], result_name))
 
     result_file_path = os.path.join(config["output_path"], result_name + '.dill')
 

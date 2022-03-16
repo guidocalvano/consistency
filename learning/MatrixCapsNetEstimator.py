@@ -47,7 +47,16 @@ class MatrixCapsNetEstimator:
              spread_loss_decay_factor=.5,
              encoding_convolution_weight_stddev=None,
              primary_pose_weights_stddev=None,
-             primary_activation_weight_stddev=None
+             primary_activation_weight_stddev=None,
+             initial_learning_rate=0.001,
+             learning_rate_decay_rate=1.0,
+             learning_rate_decay_steps=1,
+             learning_rate_use_staircase=False,
+             clip_learning_rate=0.0,
+             texture_weight_decay=0.0,
+             capsule_weight_decay=0.0,
+             detach_primary_poses=False,
+             identity_primary_poses=False
         ):
         self.loss_fn = loss_fn
         self.architecture = architecture
@@ -62,6 +71,18 @@ class MatrixCapsNetEstimator:
         self.primary_pose_weights_stddev = primary_pose_weights_stddev
         self.primary_activation_weight_stddev = primary_activation_weight_stddev
         self.encoding_convolution_weight_stddev = encoding_convolution_weight_stddev
+
+        self.initial_learning_rate = initial_learning_rate
+        self.learning_rate_decay_rate = learning_rate_decay_rate
+        self.learning_rate_decay_steps = learning_rate_decay_steps
+        self.learning_rate_use_staircase = learning_rate_use_staircase
+        self.clip_learning_rate=clip_learning_rate
+
+        self.texture_weight_decay=texture_weight_decay
+        self.capsule_weight_decay=capsule_weight_decay
+
+        self.detach_primary_poses=detach_primary_poses
+        self.identity_primary_poses=identity_primary_poses
 
         return self
 
@@ -88,13 +109,26 @@ class MatrixCapsNetEstimator:
             label_count = params["label_count"]
             batch_size = tf.cast(tf.gather(tf.shape(examples), 0), tf.float32)
 
+            batch_size = tf.Print(batch_size, ["BATCH SIZE BATCH SIZE BATCH SIZE", batch_size])
+
             is_training = tf.constant(mode == tf.estimator.ModeKeys.TRAIN)
 
             processed_example_counter = MatrixCapsNetEstimator.counter(batch_size, is_training)
 
+            lr = tf.train.exponential_decay(
+                self.initial_learning_rate,
+                tf.train.get_global_step(),
+                self.learning_rate_decay_steps,
+                self.learning_rate_decay_rate,
+                staircase=self.learning_rate_use_staircase)
+
+            lr = tf.maximum(lr, self.clip_learning_rate)
+            tf.summary.scalar('clip_learning_rate', self.clip_learning_rate)
+
+            tf.summary.scalar('learning_rate', lr)
             # # To make float16 training possible epsilon had to be increased
             # optimizer = tf.train.AdamOptimizer(epsilon=1e-4)
-            optimizer = tf.train.AdamOptimizer()
+            optimizer = tf.train.AdamOptimizer(learning_rate=lr)
 
 
             #@TODO: parallelize using: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py#L165
@@ -221,7 +255,10 @@ class MatrixCapsNetEstimator:
                             continue
 
                         g = optimizer.compute_gradients(loss_sub_batch)
-
+                        print('GRADIENT SHAPE')
+                        print(len(g))
+                        print('loss sub batch')
+                        print(loss_sub_batch)
                         # Keep track of the gradients across all towers.
                         tower_grads.append(g)
                         loss_sub_batches.append(loss_sub_batch)
@@ -238,9 +275,15 @@ class MatrixCapsNetEstimator:
         if labels is None:
             return None, None, predicted_classes, activations, poses
 
+
+        print("tower grads")
+        print(tower_grads)
+
         #TODO v what if we are in prediction mode?
         grads = self.average_gradients(tower_grads)
 
+        print('GRADS')
+        print(grads)
         # Apply the gradients to adjust the shared variables.
         train_op = optimizer.apply_gradients(grads, global_step=global_step)
 
@@ -254,7 +297,14 @@ class MatrixCapsNetEstimator:
 
         routing_state = None
 
-        mcn = MatrixCapsNet(tf.float32)
+        mcn = MatrixCapsNet(tf.float32,
+                            primary_pose_weights_stddev = self.primary_pose_weights_stddev,
+                            primary_activation_weight_stddev=self.primary_activation_weight_stddev,
+                            encoding_convolution_weight_stddev=self.encoding_convolution_weight_stddev,
+                            texture_weight_decay=self.texture_weight_decay,
+                            capsule_weight_decay=self.capsule_weight_decay,
+                            detach_primary_poses=self.detach_primary_poses,
+                            identity_primary_poses=self.identity_primary_poses)
 
         if self.inialization:
             mcn.set_init_options(self.inialization)
@@ -279,7 +329,15 @@ class MatrixCapsNetEstimator:
             "margin": spread_loss_margin}) if labels is not None else None
 
         if (loss is not None) and (regularization_loss is not None):
-            loss = loss + regularization_loss * self.regularization['axial']
+            print("ADDING REGULARIZATION LOSS")
+            print(regularization_loss)
+            print("texture_weight_decay")
+            print(self.texture_weight_decay)
+            print("capsule_weight_decay")
+            print(self.capsule_weight_decay)
+            print("loss")
+            print(loss)
+            loss = loss + regularization_loss
 
         return loss, predicted_classes, activations, poses
 
@@ -358,6 +416,50 @@ class MatrixCapsNetEstimator:
         print("test predictions computed")
 
         return test_result, validation_result, test_predictions
+
+    def train_and_test_without_validation_split(self, small_norb, batch_size = 64, epoch_count = 600, max_steps = None, save_summary_steps = 500, eval_steps = 100, model_path = config.TF_MODEL_PATH, must_stratify_batches=True):
+
+        if max_steps is None:
+            batch_count_per_epoch = small_norb.training_example_count() / batch_size
+            max_steps = batch_count_per_epoch * epoch_count
+
+        estimator = self.create_estimator(small_norb, model_path, epoch_count,
+                                          save_summary_steps=self.save_summary_steps)
+
+        print("BATCH SIZE")
+        print(batch_size)
+        if must_stratify_batches:
+            train_fn = lambda: small_norb.stratified_full_training_set_as_tf_data_set(epoch_count, batch_size)
+
+            validation_fn = lambda: small_norb.stratified_test_set_for_validation(batch_size)
+        else:
+            raise Exception("not implemented")
+
+
+        test_fn = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()).batch(batch_size)
+        test_fn_2 = lambda: tf.data.Dataset.from_tensor_slices(small_norb.default_test_set()[0]).batch(batch_size)
+
+        train_spec = tf.estimator.TrainSpec(input_fn=train_fn, max_steps=max_steps)
+        eval_spec = tf.estimator.EvalSpec(
+            input_fn = validation_fn,
+            steps = self.eval_steps,
+            throttle_secs = 1200
+
+        )
+
+        tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+        print("training complete")
+        validation_result = estimator.evaluate(input_fn= lambda: small_norb.stratified_test_set_for_validation(batch_size, must_repeat=False))
+        print("validation results computed")
+
+        test_result = estimator.evaluate(input_fn=test_fn)
+        print("test results computed")
+
+        test_predictions = list(estimator.predict(input_fn=test_fn_2))
+        print("test predictions computed")
+
+        return test_result, validation_result, test_predictions
+
 
     def create_estimator(self, small_norb, model_path, epoch_count=1.0, save_summary_steps=500):
         total_example_count = small_norb.training_example_count() * epoch_count

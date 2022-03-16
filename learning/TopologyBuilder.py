@@ -8,7 +8,7 @@ class UnknownInitializerException(Exception):
 
 class TopologyBuilder:
 
-    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=8.0, dtype=tf.float32):
+    def init(self, pose_width=4, pose_height=4, coordinate_addition_scale=8.0, dtype=tf.float32, weight_decay=0.0):
 
         self.children_shape = []
         self.child_index_dimension_count = 0
@@ -28,6 +28,8 @@ class TopologyBuilder:
         self.coordinate_addition_scale = coordinate_addition_scale
 
         self.dtype = dtype
+
+        self.weight_decay = weight_decay
 
         return self
 
@@ -359,7 +361,8 @@ class TopologyBuilder:
     def map_weights_to_parent_kernels(self, batch_size, pose_width, pose_height, scale_factor=1.0):
 
         with tf.device('/CPU:0'):
-            weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer,
+            regularizer = tf.contrib.layers.l2_regularizer(scale=self.weight_decay)
+            weights = tf.get_variable('pose_transform_weights', initializer=self.weight_initializer, regularizer=regularizer,
                               dtype=tf.float32)
 
         if self.is_axial_system:

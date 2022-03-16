@@ -1,0 +1,37 @@
+{
+  "example_count": 1205126,
+  "batch_size": 48,
+  "eval_steps": 8,
+
+  "reduce_to_two_examples": false,
+
+  "architecture": "build_default_architecture",
+  "initialization": {
+    "type": "identity",
+    "uniform": 0.03
+  },
+
+  "regularization": {
+    "axial": 0.0,
+
+  },
+
+  "output_path": "output/",
+  "tf_model_dir": "tf_models/",
+  "dtype": "float32",
+  "spread_loss_decay_factor": 0.25,
+  "encoding_convolution_weight_stddev": 5e-02,
+  "primary_pose_weights_stddev": 0.5,
+  "primary_activation_weight_stddev": 3.0,
+
+  "initial_learning_rate": 0.01,
+  "learning_rate_decay_rate": 0.96,
+  "learning_rate_decay_steps":200,
+  "learning_rate_use_staircase": false,
+  "clip_learning_rate": 0.0,
+
+  "texture_weight_decay": 0.0000002,
+  "capsule_weight_decay": 0.0000002,
+
+  "no_validation": true
+}

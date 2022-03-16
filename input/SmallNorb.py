@@ -385,6 +385,42 @@ class SmallNorb:
                                    (self.default_training_input_preprocessing(examples), labels))\
                 .prefetch(1)
 
+    def stratified_full_training_set_as_tf_data_set(self, epoch_count, batch_size):
+
+        print("SN training Batch size")
+        print(batch_size)
+
+        return tf.data.Dataset.from_generator(
+            lambda: self.stratifified_example_generator(np.concatenate([self.training["examples"], self.validation["examples"]], axis=0).astype(np.float32),
+                                                        np.concatenate([self.training["labels"], self.validation["labels"]], axis=0)),
+                                                        (tf.float32, tf.int32),
+                                                        (tf.TensorShape(self.training["examples"].shape[1:]), tf.TensorShape([]))) \
+                .repeat(epoch_count)\
+                .batch(batch_size)\
+                .map(lambda examples, labels:
+                                   (self.default_training_input_preprocessing(examples), labels))\
+                .prefetch(1)
+
+    def stratified_test_set_for_validation(self, batch_size, must_repeat=True):
+
+        print("SN validation Batch size")
+        print(batch_size)
+
+        full_set = tf.data.Dataset.from_generator(
+            lambda: self.stratifified_example_generator(self.test["examples"], self.test["labels"]),
+            (tf.float32, tf.int32),
+            (tf.TensorShape(self.training["examples"].shape[1:]), tf.TensorShape([]))
+        )
+        if must_repeat:
+            full_set = full_set.repeat()
+
+        return full_set\
+            .batch(batch_size)\
+            .map(lambda examples, labels:
+                                (self.default_preprocessed_test_input(examples), labels))\
+            .prefetch(1)
+
+
     def randomly_stratified_label_indices(self, labels):
         print('recomputing stratification')
         label_ids = np.arange(labels.shape[0])

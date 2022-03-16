@@ -25,7 +25,7 @@ class InitializationOptimizer:
             "type": "normal",
             "deviation": variable_list
         }
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
         mcn.set_init_options(init_options)
         network_output, reset_routing_configuration_op, regularization_loss = \
             getattr(mcn, architecture)(reduced_input_layer, iteration_count, None)
@@ -208,7 +208,7 @@ class InitializationOptimizer:
             "type": "normal",
             "deviation": variable_list
         }
-        mcn = MatrixCapsNet()
+        mcn = MatrixCapsNet(tf.float32)
         mcn.set_init_options(init_options)
         network_output, reset_routing_configuration_op, regularization_loss = \
             getattr(mcn, architecture)(input_layer, 1, None)
